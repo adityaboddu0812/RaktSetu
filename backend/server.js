@@ -1,0 +1,159 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const path = require('path');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
+const morgan = require('morgan');
+
+// Load environment variables
+dotenv.config({ path: path.join(__dirname, '.env') });
+
+// Create Express app
+const app = express();
+
+// Security middleware
+app.use(helmet());
+
+// Compression middleware
+app.use(compression());
+
+// Request logging
+app.use(morgan('dev'));
+
+// Rate limiting
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100 // limit each IP to 100 requests per windowMs
+});
+app.use(limiter);
+
+// CORS configuration with more permissive settings for development
+app.use(cors({
+    origin: ['http://localhost:8080', 'http://localhost:3000', 'http://127.0.0.1:8080', 'http://localhost:5173'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Body parser middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Add OPTIONS handling for preflight requests
+app.options('*', cors());
+
+// Basic route for testing
+app.get('/api/test', (req, res) => {
+    res.json({ message: 'Backend server is running!' });
+});
+
+// MongoDB Connection
+console.log('Attempting to connect to MongoDB...');
+console.log('MongoDB URI:', process.env.MONGODB_URI ? 'Found' : 'Not found');
+
+// Verify MongoDB URI format
+if (!process.env.MONGODB_URI) {
+    console.error('MongoDB URI is not defined in .env file');
+    process.exit(1);
+}
+
+// Set up connection event listeners before connecting
+mongoose.connection.on('connecting', () => {
+    console.log('Connecting to MongoDB...');
+});
+
+mongoose.connection.on('connected', () => {
+    console.log('Successfully connected to MongoDB');
+});
+
+mongoose.connection.on('error', (err) => {
+    console.error('MongoDB connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+    console.log('MongoDB disconnected');
+});
+
+// Attempt to connect
+mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 30000,
+    socketTimeoutMS: 45000,
+    connectTimeoutMS: 30000,
+    retryWrites: true,
+    w: 'majority'
+})
+.then(() => {
+    // Verify the connection is actually established
+    if (mongoose.connection.readyState !== 1) {
+        throw new Error('MongoDB connection not established');
+    }
+    console.log('MongoDB connection verified');
+})
+.catch((err) => {
+    console.error('MongoDB connection error:', err);
+    console.error('Error details:', {
+        name: err.name,
+        message: err.message,
+        code: err.code,
+        codeName: err.codeName
+    });
+    process.exit(1);
+});
+
+// Routes
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/admin', require('./routes/admin'));
+app.use('/api/donor', require('./routes/donor'));
+app.use('/api/hospital', require('./routes/hospital'));
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    res.status(err.status || 500).json({ 
+        message: err.message || 'Something went wrong!',
+        error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+});
+
+// 404 handler - This should be the last middleware
+app.use((req, res) => {
+    console.log('404 - Route not found:', {
+        path: req.path,
+        method: req.method,
+        headers: req.headers
+    });
+    res.status(404).json({
+        message: 'Route not found',
+        path: req.path,
+        method: req.method
+    });
+});
+
+// Only start the server if MongoDB is connected
+const startServer = () => {
+    const PORT = process.env.PORT || 5001;
+    const server = app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+        console.log(`Test the server at http://localhost:${PORT}/api/test`);
+    });
+
+    // Handle server shutdown gracefully
+    process.on('SIGTERM', () => {
+        console.log('SIGTERM received. Shutting down gracefully...');
+        server.close(() => {
+            console.log('Server closed.');
+            mongoose.connection.close(false).then(() => {
+                console.log('MongoDB connection closed.');
+                process.exit(0);
+            });
+        });
+    });
+};
+
+// Wait for MongoDB connection before starting server
+mongoose.connection.once('connected', startServer); 
