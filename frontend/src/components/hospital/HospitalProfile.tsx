@@ -1,13 +1,17 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Hospital } from '@/types/bloodTypes';
+import { User } from '@/contexts/AuthContext';
 
 interface HospitalProfileProps {
-  hospital: Hospital;
+  hospital: User;
 }
 
 const HospitalProfile: React.FC<HospitalProfileProps> = ({ hospital }) => {
+  if (hospital.role !== 'hospital') {
+    return <Card><CardContent><p>Invalid user type for Hospital Profile.</p></CardContent></Card>;
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -26,18 +30,23 @@ const HospitalProfile: React.FC<HospitalProfileProps> = ({ hospital }) => {
           </div>
           
           <div>
+            <h3 className="text-sm font-medium text-gray-500">License Number</h3>
+            <p>{hospital.licenseNumber || 'N/A'}</p>
+          </div>
+          
+          <div>
             <h3 className="text-sm font-medium text-gray-500">Location</h3>
-            <p>{hospital.location}</p>
+            <p>{hospital.city && hospital.state ? `${hospital.city}, ${hospital.state}` : hospital.location || 'N/A'}</p>
           </div>
           
           <div>
             <h3 className="text-sm font-medium text-gray-500">Contact Person</h3>
-            <p>{hospital.contactPerson}</p>
+            <p>{hospital.contactPerson || 'N/A'}</p>
           </div>
           
           <div>
             <h3 className="text-sm font-medium text-gray-500">Contact Number</h3>
-            <p>{hospital.contactNumber}</p>
+            <p>{hospital.phone || 'N/A'}</p>
           </div>
           
           <div>

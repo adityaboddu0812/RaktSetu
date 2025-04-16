@@ -30,7 +30,7 @@ const auth = async (req, res, next) => {
             // Verify token
             const verified = jwt.verify(token, process.env.JWT_SECRET);
             console.log('Token verified successfully:', {
-                userId: verified.userId,
+                userId: verified.userId || verified._id,
                 role: verified.role,
                 token: token.substring(0, 20) + '...'
             });
@@ -38,7 +38,11 @@ const auth = async (req, res, next) => {
             // Add more detailed logging
             console.log('Full token payload:', verified);
 
-            req.user = verified;
+            req.user = {
+                ...verified,
+                userId: verified.userId || verified._id
+            };
+            
             next();
         } catch (verifyError) {
             console.error('Token verification failed:', verifyError.message);
@@ -60,6 +64,5 @@ const auth = async (req, res, next) => {
         });
     }
 };
-
 
 module.exports = auth; 

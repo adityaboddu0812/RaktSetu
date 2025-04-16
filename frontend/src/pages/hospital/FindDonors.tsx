@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useData } from '@/contexts/DataContext';
+// import { useData } from '@/contexts/DataContext'; // REMOVED
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,9 +11,10 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import DonorCard from '@/components/DonorCard';
 import { format } from 'date-fns';
-import { BLOOD_TYPES } from '@/types/bloodTypes';
+import { BLOOD_TYPES, Donor } from '@/types/bloodTypes'; // Import Donor type
 import VerificationNotice from '@/components/hospital/VerificationNotice';
 import { toast } from 'sonner';
+import axios from 'axios'; // Needed for direct API calls if DataContext is fully removed
 
 interface RequestDetails {
   unitsRequired: number;
@@ -22,9 +23,10 @@ interface RequestDetails {
 }
 
 const FindDonors: React.FC = () => {
-  const { user } = useAuth();
-  const { donors, getHospitalById, createBloodRequest } = useData();
+  const { user, logout } = useAuth(); // Added logout for potential 401 handling
+  // const { donors, getHospitalById, createBloodRequest } = useData(); // REMOVED DataContext usage
   const [isLoading, setIsLoading] = useState(true);
+  const [donors, setDonors] = useState<Donor[]>([]); // Local state for donors
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBloodType, setSelectedBloodType] = useState<string>('all');
   const [selectedDonorId, setSelectedDonorId] = useState<string | null>(null);
@@ -38,19 +40,58 @@ const FindDonors: React.FC = () => {
   
   console.log('Current user in FindDonors:', user);
   
-  // Get hospital data
-  const hospital = user?.role === 'hospital' && user?.id 
-    ? getHospitalById(user.id) 
-    : null;
-  
-  console.log('Found hospital:', hospital);
+  // REMOVED hospital lookup via DataContext
+  // const hospital = user?.role === 'hospital' && user?._id 
+  //   ? getHospitalById(user._id) 
+  //   : null;
+  // console.log('Found hospital (lookup removed):', hospital);
   
   useEffect(() => {
-    // Set loading to false once we have the hospital data
-    if (hospital !== undefined) {
-      setIsLoading(false);
-    }
-  }, [hospital]);
+    // Fetch donors directly if user is a verified hospital
+    const fetchDonorsData = async () => {
+        if (user && user.role === 'hospital' && user.isVerified && user.token) {
+            setIsLoading(true);
+            try {
+                console.log('Fetching donors for verified hospital...');
+                const params: any = {};
+                
+                // Only add bloodGroup filter if a specific type is selected
+                if (selectedBloodType !== 'all') {
+                    params.bloodGroup = selectedBloodType;
+                }
+                
+                const response = await axios.get<Donor[]>('http://localhost:5001/api/hospital/search-donors', {
+                    params,
+                    headers: {
+                        Authorization: `Bearer ${user.token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                console.log('Fetched donors:', response.data);
+                setDonors(response.data);
+            } catch (error: any) {
+                console.error('Error fetching donors:', error);
+                if (error.response?.status === 401) {
+                  toast.error('Session expired. Please login again.');
+                  localStorage.removeItem('token');
+                  localStorage.removeItem('user');
+                  if (logout) logout();
+                  // navigate('/login'); // Need to import useNavigate if redirect is needed
+                } else {
+                    toast.error(error.response?.data?.message || 'Failed to fetch donors');
+                }
+            } finally {
+                setIsLoading(false);
+            }
+        } else {
+            // If user is not a verified hospital, stop loading
+            setIsLoading(false); 
+        }
+    };
+
+    fetchDonorsData();
+
+  }, [user, logout, selectedBloodType]); // Added selectedBloodType to dependencies
   
   // Show loading state
   if (isLoading) {
@@ -61,7 +102,7 @@ const FindDonors: React.FC = () => {
           <div className="container mx-auto">
             <div className="text-center">
               <div className="animate-spin inline-block w-8 h-8 border-4 border-blood-200 border-t-blood-500 rounded-full mb-4"></div>
-              <p className="text-gray-600">Loading hospital information...</p>
+              <p className="text-gray-600">Loading donors...</p>
             </div>
           </div>
         </main>
@@ -70,12 +111,10 @@ const FindDonors: React.FC = () => {
     );
   }
   
-  // If not a hospital user or no hospital found, show error
-  if (!user || user.role !== 'hospital' || !user.id || !hospital) {
+  // Access Control: Check if user is logged in and is a hospital
+  if (!user || user.role !== 'hospital') {
     console.log('Access denied - not a hospital user:', { 
-      user, 
-      hospital,
-      hasId: Boolean(user?.id),
+      userExists: Boolean(user),
       role: user?.role 
     });
     return (
@@ -88,14 +127,10 @@ const FindDonors: React.FC = () => {
               <p className="text-red-600">
                 {!user 
                   ? 'Please log in to access this feature.'
-                  : !user.id
-                  ? 'Invalid user data. Please try logging in again.'
-                  : user.role !== 'hospital'
-                  ? 'Only registered hospitals can access this feature.'
-                  : 'Hospital information not found. Please try logging in again.'}
+                  : 'Only registered hospitals can access this feature.'}
               </p>
               <p className="text-red-500 mt-2 text-sm">
-                Debug info: User ID: {user?.id || 'none'}, Role: {user?.role || 'none'}
+                Debug info: Role: {user?.role || 'none'}
               </p>
             </div>
           </div>
@@ -105,24 +140,14 @@ const FindDonors: React.FC = () => {
     );
   }
   
-  // If hospital is not verified, show verification notice
-  const isVerified = Boolean(hospital.isVerified);
-  console.log('Hospital verification status:', { isVerified, rawValue: hospital.isVerified });
-  
-  if (!isVerified) {
+  // Verification Check: Use user.isVerified directly
+  if (!user.isVerified) {
     console.log('Access denied - hospital not verified');
     return (
       <div className="flex flex-col min-h-screen">
         <Header />
         <main className="flex-grow py-8 px-4 bg-gray-50">
           <div className="container mx-auto">
-            <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded p-4">
-              <h2 className="text-yellow-800 text-lg font-semibold mb-2">Hospital Status</h2>
-              <p className="text-yellow-700">
-                Your hospital account is currently {hospital.isVerified ? 'verified' : 'not verified'}.
-                Raw verification value: {String(hospital.isVerified)}
-              </p>
-            </div>
             <VerificationNotice isVerified={false} />
           </div>
         </main>
@@ -133,35 +158,44 @@ const FindDonors: React.FC = () => {
   
   // Filter donors based on search and filters
   const filteredDonors = donors.filter((donor) => {
-    const matchesSearch = 
-      donor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      donor.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      donor.bloodType.toLowerCase().includes(searchTerm.toLowerCase());
+    const nameMatch = donor.name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false;
+    const locationMatch = (donor.city + ', ' + donor.state)?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false;
+    const bloodTypeMatch = donor.bloodGroup?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false;
+    const matchesSearch = nameMatch || locationMatch || bloodTypeMatch;
     
     const matchesBloodType = 
       selectedBloodType === 'all' || 
-      donor.bloodType === selectedBloodType;
+      donor.bloodGroup === selectedBloodType;
     
     return matchesSearch && matchesBloodType;
   });
   
   const handleCreateRequest = async () => {
-    if (!selectedDonorId) return;
+    if (!selectedDonorId || !user) return;
 
-    const donor = donors.find(d => d.id === selectedDonorId);
+    const donor = donors.find(d => d._id === selectedDonorId);
     if (!donor) return;
 
     setIsCreatingRequest(true);
     try {
-      await createBloodRequest({
-        donorId: selectedDonorId,
-        bloodType: donor.bloodType,
-        unitsRequired: requestDetails.unitsRequired,
-        urgency: requestDetails.urgency,
-        notes: requestDetails.notes
-      });
-      
-      toast.success('Blood request created successfully');
+      // Need to replace createBloodRequest from DataContext with a direct API call
+      console.warn('createBloodRequest needs to be implemented with a direct API call');
+      // Example API call structure (needs correct endpoint and payload):
+      // await axios.post('http://localhost:5001/api/hospital/blood-requests', // Assuming endpoint
+      //   { 
+      //     // Construct payload based on backend requirements
+      //     donorId: selectedDonorId, 
+      //     bloodType: donor.bloodType,
+      //     contactPerson: user.contactPerson || user.name, // Get from user
+      //     contactNumber: user.phone, // Get from user
+      //     urgent: requestDetails.urgency === 'critical' || requestDetails.urgency === 'high',
+      //     // other fields... units, notes based on RequestDetails state?
+      //   },
+      //   {
+      //     headers: { Authorization: `Bearer ${user.token}` }
+      //   }
+      // );
+      toast.info('Blood request creation (placeholder)'); // Placeholder
       setIsDonorDetailsOpen(false);
     } catch (error) {
       console.error('Error creating blood request:', error);
@@ -176,7 +210,7 @@ const FindDonors: React.FC = () => {
     setIsDonorDetailsOpen(true);
   };
   
-  const selectedDonor = selectedDonorId ? donors.find(donor => donor.id === selectedDonorId) : null;
+  const selectedDonor = selectedDonorId ? donors.find(donor => donor._id === selectedDonorId) : null;
   
   return (
     <div className="flex flex-col min-h-screen">
@@ -186,7 +220,7 @@ const FindDonors: React.FC = () => {
         <div className="container mx-auto">
           <h1 className="text-3xl font-bold mb-2">Find Blood Donors</h1>
           <p className="text-gray-600 mb-8">
-            Search for blood donors based on blood type and location
+            Search for available blood donors in your area.
           </p>
           
           <div className="bg-white p-4 rounded-lg shadow-sm mb-6">
@@ -222,223 +256,91 @@ const FindDonors: React.FC = () => {
             </div>
           </div>
           
-          <div className="mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">Blood Type Distribution</h2>
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-              {BLOOD_TYPES.map((type) => {
-                const count = donors.filter(d => d.bloodType === type).length;
-                return (
-                  <Card 
-                    key={type} 
-                    className={`cursor-pointer hover:border-blood-300 ${selectedBloodType === type ? 'border-blood-500 bg-blood-50' : ''}`}
-                    onClick={() => setSelectedBloodType(type === selectedBloodType ? 'all' : type)}
-                  >
-                    <CardContent className="p-4 text-center">
-                      <div className="w-10 h-10 rounded-full bg-blood-100 border border-blood-200 flex items-center justify-center mx-auto mb-2">
-                        <span className="text-blood-800 font-semibold">{type}</span>
-                      </div>
-                      <p className="font-medium">{count}</p>
-                      <p className="text-xs text-gray-500">Donors</p>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
-          
-          {filteredDonors.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredDonors.map((donor) => (
-                <DonorCard
-                  key={donor.id}
-                  id={donor.id}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredDonors.length > 0 ? (
+              filteredDonors.map((donor) => (
+                <DonorCard 
+                  key={donor._id}
+                  id={donor._id}
                   name={donor.name}
-                  bloodType={donor.bloodType}
+                  bloodGroup={donor.bloodGroup}
                   age={donor.age}
                   gender={donor.gender}
-                  location={donor.location}
+                  city={donor.city || ''}
+                  state={donor.state || ''}
+                  phone={donor.phone}
                   lastDonation={donor.lastDonation}
                   donations={donor.donations}
-                  onContact={() => handleViewDetails(donor.id)}
-                  onView={() => handleViewDetails(donor.id)}
+                  onView={() => handleViewDetails(donor._id)}
+                  showContactInfo={true}
                 />
-              ))}
-            </div>
-          ) : (
-            <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-              <AlertCircle className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <h2 className="text-xl font-semibold mb-2">No Donors Found</h2>
-              <p className="text-gray-600 max-w-md mx-auto">
-                No donors match your search criteria. Try adjusting your filters or check back later for new donors.
+              ))
+            ) : (
+              <p className="text-gray-500 md:col-span-2 lg:col-span-3 text-center py-8">
+                No donors found matching your criteria.
               </p>
-            </div>
-          )}
-          
-          {/* Donor Details Dialog */}
-          <Dialog open={isDonorDetailsOpen} onOpenChange={setIsDonorDetailsOpen}>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Donor Details</DialogTitle>
-                <DialogDescription>
-                  Create a blood request to connect with this donor
-                </DialogDescription>
-              </DialogHeader>
-              
-              {selectedDonor && (
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-16 h-16 rounded-full bg-blood-100 border border-blood-200 flex items-center justify-center">
-                      <span className="text-blood-800 text-xl font-bold">{selectedDonor.bloodType}</span>
-                    </div>
-                    
-                    <div>
-                      <h3 className="font-bold text-lg">{selectedDonor.name}</h3>
-                      <p className="text-gray-500">
-                        {selectedDonor.age}, {selectedDonor.gender}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-start">
-                      <MapPin className="h-4 w-4 mr-1 text-gray-500 mt-0.5" />
-                      <div>
-                        <h3 className="text-sm font-medium text-gray-500">Location</h3>
-                        <p>{selectedDonor.location}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-start">
-                      <UserCheck className="h-4 w-4 mr-1 text-gray-500 mt-0.5" />
-                      <div>
-                        <h3 className="text-sm font-medium text-gray-500">Status</h3>
-                        <p className={selectedDonor.available ? "text-green-600" : "text-yellow-600"}>
-                          {selectedDonor.available ? 'Available for donation' : 'Currently unavailable'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-start">
-                      <Calendar className="h-4 w-4 mr-1 text-gray-500 mt-0.5" />
-                      <div>
-                        <h3 className="text-sm font-medium text-gray-500">Last Donation</h3>
-                        <p>
-                          {selectedDonor.lastDonation 
-                            ? format(new Date(selectedDonor.lastDonation), 'MMM d, yyyy')
-                            : 'Never donated'}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <h3 className="text-sm font-medium text-gray-500">Total Donations</h3>
-                      <p>{selectedDonor.donations}</p>
-                    </div>
-                  </div>
-                  
-                  {selectedDonor.available ? (
-                    <div className="mt-2 bg-green-50 border border-green-200 rounded p-3 text-sm">
-                      <p className="text-green-800">
-                        This donor is available for blood donation. Create a request to initiate the donation process.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="mt-2 bg-yellow-50 border border-yellow-200 rounded p-3 text-sm">
-                      <p className="text-yellow-800">
-                        This donor is currently unavailable for donation. Please check back later.
-                      </p>
-                    </div>
-                  )}
-                  
-                  <div className="bg-gray-50 rounded p-3 text-sm">
-                    <p className="text-gray-600">
-                      <Phone className="h-4 w-4 inline mr-1" />
-                      Contact information will be shared once the donor accepts your request.
-                    </p>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium">Units Required</label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={requestDetails.unitsRequired}
-                        onChange={(e) => setRequestDetails(prev => ({
-                          ...prev,
-                          unitsRequired: parseInt(e.target.value) || 1
-                        }))}
-                      />
-                    </div>
-                    
-                    <div>
-                      <label className="text-sm font-medium">Urgency Level</label>
-                      <Select
-                        value={requestDetails.urgency}
-                        onValueChange={(value) => setRequestDetails(prev => ({
-                          ...prev,
-                          urgency: value as 'low' | 'medium' | 'high' | 'critical'
-                        }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select urgency" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                          <SelectItem value="critical">Critical</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <label className="text-sm font-medium">Notes (Optional)</label>
-                      <Input
-                        value={requestDetails.notes}
-                        onChange={(e) => setRequestDetails(prev => ({
-                          ...prev,
-                          notes: e.target.value
-                        }))}
-                        placeholder="Add any additional information..."
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-              
-              <DialogFooter className="flex justify-end space-x-2">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setIsDonorDetailsOpen(false)}
-                >
-                  Close
-                </Button>
-                {selectedDonor?.available && (
-                  <Button
-                    onClick={handleCreateRequest}
-                    disabled={isCreatingRequest}
-                  >
-                    {isCreatingRequest ? (
-                      <>
-                        <span className="animate-spin mr-2">⌛</span>
-                        Creating Request...
-                      </>
-                    ) : (
-                      'Create Blood Request'
-                    )}
-                  </Button>
-                )}
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            )}
+          </div>
         </div>
       </main>
+      
+      {/* Donor Details Dialog */}
+      {selectedDonor && (
+        <Dialog open={isDonorDetailsOpen} onOpenChange={setIsDonorDetailsOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Donor Details</DialogTitle>
+              <DialogDescription>
+                Contact information and details for {selectedDonor.name}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="flex items-center">
+                <UserCheck className="mr-2 h-4 w-4 text-gray-500" /> 
+                <span>{selectedDonor.name} ({selectedDonor.gender}, {selectedDonor.age} yrs)</span>
+              </div>
+              <div className="flex items-center">
+                <MapPin className="mr-2 h-4 w-4 text-gray-500" />
+                <span>{selectedDonor.city}, {selectedDonor.state}</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-5 h-5 rounded-full bg-blood-100 border border-blood-200 flex items-center justify-center mr-2">
+                  <span className="text-blood-800 text-xs font-semibold">{selectedDonor.bloodGroup}</span>
+                </div>
+                <span>Blood Type: {selectedDonor.bloodGroup}</span>
+              </div>
+              <div className="flex items-center">
+                <Phone className="mr-2 h-4 w-4 text-gray-500" />
+                <div className="flex items-center">
+                  <AlertCircle className="mr-2 h-4 w-4 text-yellow-500" />
+                  <span className="text-sm text-gray-600">Contact number will be available once the donor accepts your request</span>
+                </div>
+              </div>
+              {selectedDonor.lastDonation && (
+                <div className="flex items-center">
+                  <Calendar className="mr-2 h-4 w-4 text-gray-500" />
+                  <span>Last Donation: {format(new Date(selectedDonor.lastDonation), 'PPP')}</span>
+                </div>
+              )}
+              {/* TODO: Add functionality to request blood from donor */}
+              <div className="mt-4 border-t pt-4">
+                 <h4 className="font-medium mb-2">Request Blood Donation</h4>
+                 <p className="text-sm text-gray-600 mb-3">Initiate a blood request for this donor.</p>
+                 {/* Placeholder for request form or button */}
+                 <Button 
+                    onClick={handleCreateRequest} 
+                    disabled={isCreatingRequest}
+                  >
+                    {isCreatingRequest ? 'Sending Request...' : 'Send Blood Request'}
+                  </Button>
+               </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsDonorDetailsOpen(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
       
       <Footer />
     </div>

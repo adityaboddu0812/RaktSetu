@@ -14,6 +14,14 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 // Create Express app
 const app = express();
 
+// CORS configuration with more permissive settings for development
+app.use(cors({
+    origin: ['http://localhost:8080', 'http://localhost:3000', 'http://127.0.0.1:8080', 'http://localhost:5173'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+}));
+
 // Security middleware
 app.use(helmet());
 
@@ -29,14 +37,6 @@ const limiter = rateLimit({
     max: 100 // limit each IP to 100 requests per windowMs
 });
 app.use(limiter);
-
-// CORS configuration with more permissive settings for development
-app.use(cors({
-    origin: ['http://localhost:8080', 'http://localhost:3000', 'http://127.0.0.1:8080', 'http://localhost:5173'],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
 
 // Body parser middleware
 app.use(express.json());
@@ -106,10 +106,58 @@ mongoose.connect(process.env.MONGODB_URI, {
 });
 
 // Routes
+console.log('Registering routes...');
+
 app.use('/api/auth', require('./routes/auth'));
+console.log('Auth routes registered');
+
 app.use('/api/admin', require('./routes/admin'));
+console.log('Admin routes registered');
+
 app.use('/api/donor', require('./routes/donor'));
+console.log('Donor routes registered');
+
 app.use('/api/hospital', require('./routes/hospital'));
+console.log('Hospital routes registered');
+
+// Log all incoming requests
+app.use((req, res, next) => {
+    console.log('Incoming request:', {
+        method: req.method,
+        path: req.path,
+        query: req.query,
+        body: req.body,
+        headers: {
+            authorization: req.headers.authorization ? 'Present' : 'Not present',
+            'content-type': req.headers['content-type']
+        }
+    });
+    next();
+});
+
+// Simple route to check if admin routes are loaded
+app.get('/api/check-admin-routes', (req, res) => {
+    try {
+        const adminRoutes = require('./routes/admin');
+        const routeNames = [];
+        adminRoutes.stack?.forEach(layer => {
+            if (layer.route) {
+                routeNames.push(`${layer.route.stack[0].method.toUpperCase()} ${layer.route.path}`);
+            }
+        });
+        res.json({ 
+            message: 'Admin routes check', 
+            loaded: true,
+            routes: routeNames.length > 0 ? routeNames : 'No routes found'
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            message: 'Error checking admin routes',
+            error: error.message,
+            stack: error.stack
+        });
+    }
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -137,22 +185,28 @@ app.use((req, res) => {
 // Only start the server if MongoDB is connected
 const startServer = () => {
     const PORT = process.env.PORT || 5001;
-    const server = app.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`);
-        console.log(`Test the server at http://localhost:${PORT}/api/test`);
-    });
+    try {
+        const server = app.listen(PORT, () => {
+            console.log(`Server is running on port ${PORT}`);
+            console.log(`Test the server at http://localhost:${PORT}/api/test`);
+            console.log(`Check admin routes at http://localhost:${PORT}/api/check-admin-routes`);
+        });
 
-    // Handle server shutdown gracefully
-    process.on('SIGTERM', () => {
-        console.log('SIGTERM received. Shutting down gracefully...');
-        server.close(() => {
-            console.log('Server closed.');
-            mongoose.connection.close(false).then(() => {
-                console.log('MongoDB connection closed.');
-                process.exit(0);
+        // Handle server shutdown gracefully
+        process.on('SIGTERM', () => {
+            console.log('SIGTERM received. Shutting down gracefully...');
+            server.close(() => {
+                console.log('Server closed.');
+                mongoose.connection.close(false).then(() => {
+                    console.log('MongoDB connection closed.');
+                    process.exit(0);
+                });
             });
         });
-    });
+    } catch (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    }
 };
 
 // Wait for MongoDB connection before starting server

@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useData } from '@/contexts/DataContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PlusCircle } from 'lucide-react';
@@ -15,32 +14,96 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { AlertCircle } from 'lucide-react';
 import BloodRequestCard from '@/components/BloodRequestCard';
 import { toast } from 'sonner';
+import axios from 'axios';
+import { BloodRequest, Hospital } from '@/types/bloodTypes';
 
 const HospitalDashboard: React.FC = () => {
-  const { user } = useAuth();
-  const { 
-    getHospitalById, 
-    getRequestsByHospital,
-    updateBloodRequestStatus,
-    getRequestById,
-    hospitals,
-    bloodRequests
-  } = useData();
-  
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [bloodRequests, setBloodRequests] = useState<BloodRequest[]>([]);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [isRequestDetailsOpen, setIsRequestDetailsOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
   
-  const hospital = getHospitalById(user?.id || '');
-  const allRequests = getRequestsByHospital(user?.id || '');
-  const hospitalRequests = bloodRequests.filter(request => request.hospitalId === user?.id);
-  
-  const pendingRequests = allRequests.filter(req => req.status === 'pending');
-  const acceptedRequests = allRequests.filter(req => req.status === 'accepted');
-  const completedRequests = allRequests.filter(req => req.status === 'completed');
-  const cancelledRequests = allRequests.filter(req => req.status === 'cancelled');
-  
-  const handleCancelRequest = (requestId: string) => {
-    updateBloodRequestStatus(requestId, 'cancelled');
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      if (!user || !user.token) {
+        console.log('Dashboard useEffect: Waiting for user or token.');
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      const token = user.token;
+
+      try {
+        console.log(`Fetching blood requests with token: Bearer ${token.substring(0, 10)}...`);
+        const response = await axios.get<BloodRequest[]>('http://localhost:5001/api/hospital/blood-requests', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        console.log('Blood requests response:', response.data);
+        setBloodRequests(response.data);
+      } catch (error: any) {
+        console.error('Error fetching blood requests:', error);
+        if (error.response?.status === 401) {
+          toast.error('Session expired or invalid (API fetch). Please login again.');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          if (logout) logout();
+          navigate('/login');
+        } else {
+          toast.error(error.response?.data?.message || 'Failed to fetch blood requests');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user) {
+        fetchInitialData(); 
+    }
+
+  }, [user, navigate, logout]);
+
+  const handleCancelRequest = async (requestId: string) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast.error('Please login to continue.');
+      navigate('/login');
+      return;
+    }
+
+    try {
+      await axios.patch(`http://localhost:5001/api/hospital/blood-requests/${requestId}`, 
+        { status: 'cancelled' },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      setBloodRequests(prev => prev.map(req => 
+        req._id === requestId ? { ...req, status: 'cancelled' } : req
+      ));
+      toast.success('Request action attempted.');
+    } catch (error: any) {
+      console.error('Error updating request:', error);
+      if (error.response?.status === 401) {
+        toast.error('Session expired. Please login again.');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        if (logout) logout();
+        navigate('/login');
+      } else {
+        toast.error(error.response?.data?.message || 'Failed to update request');
+      }
+    }
   };
   
   const handleViewDetails = (requestId: string) => {
@@ -48,10 +111,10 @@ const HospitalDashboard: React.FC = () => {
     setIsRequestDetailsOpen(true);
   };
   
-  const selectedRequest = selectedRequestId ? getRequestById(selectedRequestId) : null;
+  const selectedRequest = selectedRequestId ? 
+    bloodRequests.find(req => req._id === selectedRequestId) : null;
   
-  // Loading state while waiting for hospital data
-  if (!user || !hospital) {
+  if (loading) {
     return (
       <div className="flex flex-col min-h-screen">
         <Header />
@@ -59,13 +122,28 @@ const HospitalDashboard: React.FC = () => {
           <div className="container mx-auto">
             <div className="flex items-center justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blood-600"></div>
-              <span className="ml-3">Loading hospital data...</span>
+              <span className="ml-3">Loading dashboard...</span>
             </div>
           </div>
         </main>
         <Footer />
       </div>
     );
+  }
+
+  if (!user) {
+     console.log("User data not available after load. Ensure login state is correct.")
+     return (
+       <div className="flex flex-col min-h-screen">
+         <Header />
+         <main className="flex-grow py-12">
+           <div className="container mx-auto text-center">
+             Authenticating or redirecting...
+           </div>
+         </main>
+         <Footer />
+       </div>
+     ); 
   }
   
   return (
@@ -75,14 +153,12 @@ const HospitalDashboard: React.FC = () => {
       <main className="flex-grow py-12 px-4 bg-gray-50">
         <div className="container mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Hospital Profile */}
             <div className="lg:col-span-1">
-              <HospitalProfile hospital={hospital} />
+              <HospitalProfile hospital={user} />
             </div>
             
-            {/* Main Content */}
             <div className="lg:col-span-2 space-y-8">
-              {!hospital.isVerified ? (
+              {!user.isVerified ? (
                 <Card className="bg-yellow-50 border-yellow-200">
                   <CardContent className="pt-6">
                     <div className="flex items-start">
@@ -118,7 +194,7 @@ const HospitalDashboard: React.FC = () => {
                       </div>
                     </CardHeader>
                     <CardContent>
-                      {hospitalRequests.length === 0 ? (
+                      {bloodRequests.length === 0 ? (
                         <div className="text-center py-8">
                           <p className="text-gray-500">No blood requests found</p>
                           <Button variant="outline" className="mt-4" asChild>
@@ -129,16 +205,18 @@ const HospitalDashboard: React.FC = () => {
                         </div>
                       ) : (
                         <div className="space-y-4">
-                          {hospitalRequests.map(request => (
+                          {bloodRequests.map(request => (
                             <BloodRequestCard 
-                              key={request.id}
-                              id={request.id}
+                              key={request._id}
+                              id={request._id}
                               hospitalName={request.hospitalName}
                               bloodType={request.bloodType}
                               urgent={request.urgent}
-                              status={request.status}
-                              location={request.location}
+                              status={request.status || 'pending'}
+                              location={user.location}
                               createdAt={request.createdAt}
+                              onCancel={() => handleCancelRequest(request._id)}
+                              onView={() => handleViewDetails(request._id)}
                               showActionButtons={true}
                               isDonorView={false}
                             />

@@ -3,18 +3,17 @@ export const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 export interface BloodRequest {
   _id: string;
   hospitalId: string;
-  donorId: string | null;
+  hospitalName: string;
   bloodType: string;
   contactPerson: string;
   contactNumber: string;
   urgent: boolean;
-  status: 'pending' | 'accepted' | 'rejected' | 'completed';
+  status: 'pending' | 'accepted' | 'completed' | 'cancelled';
   createdAt: string;
   updatedAt: string;
 }
 
 export interface BloodRequestPayload {
-  hospitalId: string;
   bloodType: string;
   contactPerson: string;
   contactNumber: string;
@@ -22,26 +21,25 @@ export interface BloodRequestPayload {
 }
 
 export interface Donor {
-  id: string;
+  _id: string;
   name: string;
   email: string;
-  bloodType: string;
-  age: number;
-  gender: string;
-  location: string;
+  bloodGroup: string;
+  age?: number;
+  gender?: string;
+  city: string;
   state: string;
-  contactNumber: string;
+  phone: string;
   lastDonation?: string;
-  donations: number;
+  donations?: number;
   createdAt: string;
-  available?: boolean;
-  nextEligibleDate?: string;
 }
 
 export interface Hospital {
-  id: string;
+  _id: string;
   name: string;
   email: string;
+  licenseNumber: string;
   phone: string;
   city: string;
   state: string;
@@ -52,13 +50,14 @@ export interface Hospital {
   requestsMade: number;
   requestsCompleted: number;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface DataContextType {
   bloodRequests: BloodRequest[];
   donors: Donor[];
   hospitals: Hospital[];
-  addBloodRequest: (request: Omit<BloodRequest, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  addBloodRequest: (request: Omit<BloodRequest, '_id' | 'createdAt' | 'updatedAt'>) => void;
   updateBloodRequestStatus: (requestId: string, urgent: boolean) => void;
   getDonorById: (id: string) => Donor | undefined;
   getHospitalById: (id: string) => Hospital | undefined;
@@ -68,8 +67,8 @@ export interface DataContextType {
   getRequestsByDonor: (donorId: string) => BloodRequest[];
   getBloodRequestsForDonor: (donorId: string) => BloodRequest[];
   getCompletedRequestsByDonorId: (donorId: string) => BloodRequest[];
-  addDonor: (donor: Omit<Donor, 'id' | 'createdAt' | 'donations'>) => void;
-  addHospital: (hospital: Omit<Hospital, 'id' | 'createdAt' | 'requestsMade' | 'requestsCompleted'>) => void;
+  addDonor: (donor: Omit<Donor, '_id' | 'createdAt' | 'donations'>) => void;
+  addHospital: (hospital: Omit<Hospital, '_id' | 'createdAt' | 'requestsMade' | 'requestsCompleted'>) => void;
   verifyHospital: (hospitalId: string, verified: boolean) => void;
   getBloodRequests: () => Promise<void>;
   createBloodRequest: (request: BloodRequestPayload) => Promise<BloodRequest>;

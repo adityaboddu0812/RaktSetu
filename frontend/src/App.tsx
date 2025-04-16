@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 // Contexts
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import { DataProvider, useData } from "./contexts/DataContext";
+import { DataProvider } from "./contexts/DataContext";
 
 // Page components
 import Landing from "./pages/Landing";
@@ -42,7 +42,6 @@ const ProtectedRoute = ({
   allowedRole: 'donor' | 'hospital' | 'admin' | null;
 }) => {
   const { user, isAuthenticated, isLoading } = useAuth();
-  const { getHospitalById } = useData();
   
   // Show loading state while checking authentication
   if (isLoading) {
@@ -57,28 +56,33 @@ const ProtectedRoute = ({
     return <Navigate to="/login" replace />;
   }
   
-  if (allowedRole && user?.role !== allowedRole) {
-    // Redirect to appropriate dashboard based on role
-    if (user?.role === 'donor') {
-      return <Navigate to="/donor/dashboard" replace />;
-    } else if (user?.role === 'hospital') {
+  // Check if user exists before accessing role
+  if (!user) {
+     console.error("ProtectedRoute: User is null after loading finished.")
+     return <Navigate to="/login" replace />; 
+  }
+
+  // Role check
+  if (allowedRole && user.role !== allowedRole) {
+    // Redirect based on actual role
+    if (user.role === 'donor') return <Navigate to="/donor/dashboard" replace />;
+    if (user.role === 'hospital') return <Navigate to="/hospital/dashboard" replace />;
+    if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
+    return <Navigate to="/login" replace />; // Fallback
+  }
+  
+  // Hospital Verification Check (Simplified)
+  // Checks if the route requires 'hospital' role AND the logged-in user IS a hospital AND they are NOT verified.
+  if (allowedRole === 'hospital' && user.role === 'hospital' && !user.isVerified) {
+    // If not verified, only allow access to the main dashboard page.
+    if (window.location.pathname !== '/hospital/dashboard') {
+      console.log("Redirecting unverified hospital from", window.location.pathname, "to dashboard.");
+      // Optional: toast.info("Your account requires verification for full access.");
       return <Navigate to="/hospital/dashboard" replace />;
-    } else if (user?.role === 'admin') {
-      return <Navigate to="/admin/dashboard" replace />;
-    } else {
-      return <Navigate to="/login" replace />;
     }
   }
   
-  // Additional verification check for hospital routes
-  if (allowedRole === 'hospital' && user?.role === 'hospital') {
-    const hospital = getHospitalById(user.id);
-    
-    if (!hospital?.isVerified && window.location.pathname !== '/hospital/dashboard') {
-      return <Navigate to="/hospital/dashboard" replace />;
-    }
-  }
-  
+  // If all checks pass, render the requested component
   return <>{children}</>;
 };
 

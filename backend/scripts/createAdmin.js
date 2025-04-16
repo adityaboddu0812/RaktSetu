@@ -19,43 +19,50 @@ mongoose.connect(process.env.MONGODB_URI, {
 
 const adminData = {
     email: 'admin@raktsetu.com',
-    password: 'admin123',
-    name: 'Admin'
+    password: 'Admin@123',
+    name: 'Admin User'
 };
 
 async function createAdmin() {
     try {
+        console.log('Checking for existing admin...');
         // Check if admin exists
         const existingAdmin = await Admin.findOne({ email: adminData.email });
         
         if (existingAdmin) {
+            console.log('Admin already exists. Updating password...');
             // Update admin password
             const hashedPassword = await bcrypt.hash(adminData.password, 10);
             await Admin.updateOne(
                 { email: adminData.email },
                 { $set: { password: hashedPassword } }
             );
-            console.log('Admin password reset successfully');
+            console.log('✅ Admin password reset successfully');
         } else {
+            console.log('No admin found. Creating new admin...');
             // Create new admin
             const hashedPassword = await bcrypt.hash(adminData.password, 10);
             const admin = new Admin({
                 email: adminData.email,
                 password: hashedPassword,
-                name: adminData.name
+                name: adminData.name,
+                role: 'admin'
             });
             await admin.save();
-            console.log('Admin created successfully');
+            console.log('✅ Admin created successfully');
         }
 
-        console.log('\nAdmin Credentials:');
+        console.log('\n📝 Admin Credentials:');
         console.log('Email:', adminData.email);
         console.log('Password:', adminData.password);
+        console.log('\n⚠️ Please save these credentials securely!');
     } catch (error) {
-        console.error('Error:', error);
+        console.error('❌ Error:', error);
     } finally {
-        mongoose.connection.close();
+        await mongoose.connection.close();
+        console.log('\nDatabase connection closed');
     }
 }
 
+// Run the function
 createAdmin(); 

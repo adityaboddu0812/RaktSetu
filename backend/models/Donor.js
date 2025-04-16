@@ -31,12 +31,27 @@ const donorSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    age: {
+        type: Number,
+        required: true,
+        min: 18,
+        max: 65
+    },
+    gender: {
+        type: String,
+        required: true,
+        enum: ['Male', 'Female', 'Other']
+    },
     lastDonation: {
         type: Date
     },
-    isAvailable: {
-        type: Boolean,
-        default: true
+    donations: {
+        type: Number,
+        default: 0
+    },
+    role: {
+        type: String,
+        default: 'donor'
     }
 }, {
     timestamps: true

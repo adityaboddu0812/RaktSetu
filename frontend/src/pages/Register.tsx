@@ -80,9 +80,10 @@ const Register: React.FC = () => {
         password: donorPassword,
         bloodGroup: donorBloodType,
         phone: donorContactNumber,
-        address: donorLocation,  // Use location as address
         city: donorLocation,    // Use location as city
         state: donorState,
+        age: parseInt(donorAge),
+        gender: donorGender,
         isAvailable: donorAvailable
       };
       

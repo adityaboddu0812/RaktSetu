@@ -117,13 +117,6 @@ const Login: React.FC = () => {
                           required
                         />
                       </div>
-                      
-                      <div className="text-sm text-muted-foreground">
-                        <div className="flex items-center text-amber-600 bg-amber-50 p-2 rounded">
-                          <AlertCircle className="h-4 w-4 mr-2" />
-                          <p>Demo Credentials: donor@example.com / password</p>
-                        </div>
-                      </div>
                     </div>
                     
                     <Button className="w-full mt-6" type="submit" disabled={isLoading}>
@@ -157,13 +150,6 @@ const Login: React.FC = () => {
                           required
                         />
                       </div>
-                      
-                      <div className="text-sm text-muted-foreground">
-                        <div className="flex items-center text-amber-600 bg-amber-50 p-2 rounded">
-                          <AlertCircle className="h-4 w-4 mr-2" />
-                          <p>Demo Credentials: hospital@example.com / password</p>
-                        </div>
-                      </div>
                     </div>
                     
                     <Button className="w-full mt-6" type="submit" disabled={isLoading}>
@@ -196,13 +182,6 @@ const Login: React.FC = () => {
                           onChange={(e) => setAdminPassword(e.target.value)}
                           required
                         />
-                      </div>
-                      
-                      <div className="text-sm text-muted-foreground">
-                        <div className="flex items-center text-amber-600 bg-amber-50 p-2 rounded">
-                          <AlertCircle className="h-4 w-4 mr-2" />
-                          <p>Demo Credentials: admin@gmail.com / admin123</p>
-                        </div>
                       </div>
                     </div>
                     

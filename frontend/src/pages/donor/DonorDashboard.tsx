@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,27 +8,68 @@ import { format, parseISO, addMonths, isAfter } from 'date-fns';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import DonorEligibility from '@/components/DonorEligibility';
+import { toast } from 'sonner';
+import axios from 'axios';
 
 const DonorDashboard: React.FC = () => {
   const { user } = useAuth();
-  const { getDonorById, getCompletedRequestsByDonorId } = useData();
-  
-  // Create a default donor if one doesn't exist yet
-  const donor = getDonorById(user?.id || '') || {
-    id: user?.id || 'default',
-    name: user?.name || 'New Donor',
-    email: user?.email || '',
-    bloodType: user?.bloodType || 'O+',
-    age: 25,
-    gender: 'Not specified',
-    location: user?.location || 'Not specified',
-    contactNumber: '',
-    donations: 0,
-    createdAt: new Date().toISOString()
-  };
-  
+  const { getCompletedRequestsByDonorId } = useData();
+  const [donor, setDonor] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDonorProfile = async () => {
+      try {
+        const response = await axios.get('http://localhost:5001/api/donor/profile', {
+          headers: {
+            Authorization: `Bearer ${user?.token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        setDonor(response.data);
+      } catch (error) {
+        console.error('Error fetching donor profile:', error);
+        toast.error('Failed to fetch donor profile');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user?.token) {
+      fetchDonorProfile();
+    }
+  }, [user]);
+
   const completedRequests = getCompletedRequestsByDonorId(user?.id || '');
   
+  if (loading) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <Header />
+        <main className="flex-grow py-8 px-4 bg-gray-50">
+          <div className="container mx-auto">
+            <p>Loading donor profile...</p>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (!donor) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <Header />
+        <main className="flex-grow py-8 px-4 bg-gray-50">
+          <div className="container mx-auto">
+            <p>Error loading donor profile. Please try again later.</p>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   const lastDonationDate = donor.lastDonation ? format(new Date(donor.lastDonation), 'PPP') : 'Never donated';
   const nextEligibleDate = donor.lastDonation 
     ? format(addMonths(new Date(donor.lastDonation), 3), 'PPP')
@@ -75,7 +115,7 @@ const DonorDashboard: React.FC = () => {
                         <MapPin className="h-4 w-4 mr-1 text-gray-500 mt-0.5" />
                         <div>
                           <h3 className="text-sm font-medium text-gray-500">Location</h3>
-                          <p>{donor.location}</p>
+                          <p>{donor.city}, {donor.state}</p>
                         </div>
                       </div>
                     </div>
@@ -87,7 +127,7 @@ const DonorDashboard: React.FC = () => {
                           <h3 className="text-sm font-medium text-gray-500">Blood Type</h3>
                           <div className="flex items-center">
                             <Badge className="bg-blood-100 text-blood-800 hover:bg-blood-200">
-                              {donor.bloodType}
+                              {donor.bloodGroup}
                             </Badge>
                           </div>
                         </div>
@@ -97,7 +137,7 @@ const DonorDashboard: React.FC = () => {
                         <Phone className="h-4 w-4 mr-1 text-gray-500 mt-0.5" />
                         <div>
                           <h3 className="text-sm font-medium text-gray-500">Contact</h3>
-                          <p>{donor.contactNumber}</p>
+                          <p>{donor.phone}</p>
                         </div>
                       </div>
                       
@@ -119,7 +159,7 @@ const DonorDashboard: React.FC = () => {
                       
                       <div>
                         <h3 className="text-sm font-medium text-gray-500">Total Donations</h3>
-                        <p>{donor.donations}</p>
+                        <p>{donor.donations || 0}</p>
                       </div>
                     </div>
                   </div>
@@ -156,11 +196,11 @@ const DonorDashboard: React.FC = () => {
                         </div>
                       ))}
                     </div>
-                  ) : (
+                  ) :
                     <div className="text-center py-8">
                       <p className="text-gray-500">No donation history yet</p>
                     </div>
-                  )}
+                  }
                 </CardContent>
               </Card>
             </div>

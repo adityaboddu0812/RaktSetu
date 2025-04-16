@@ -10,7 +10,8 @@ const auth = require('../middleware/auth');
 router.get('/profile', auth, async (req, res) => {
     try {
         console.log('Fetching hospital profile for userId:', req.user.userId);
-        const hospital = await Hospital.findById(req.user.userId);
+        const hospital = await Hospital.findById(req.user.userId)
+            .select('name email licenseNumber phone city state contactPerson isVerified requestsMade requestsCompleted createdAt');
         
         if (!hospital) {
             console.log('Hospital not found for userId:', req.user.userId);
@@ -20,7 +21,8 @@ router.get('/profile', auth, async (req, res) => {
         console.log('Found hospital:', {
             id: hospital._id,
             name: hospital.name,
-            isVerified: hospital.isVerified
+            isVerified: hospital.isVerified,
+            contactPerson: hospital.contactPerson
         });
 
         // Always return the hospital data, regardless of verification status
@@ -72,14 +74,26 @@ router.get('/search-donors', auth, async (req, res) => {
         }
 
         const { bloodGroup, city } = req.query;
-        const query = { isAvailable: true };
+        const query = {};
         
         if (bloodGroup) query.bloodGroup = bloodGroup;
         if (city) query.city = city;
 
-        const donors = await Donor.find(query).select('-password');
+        console.log('Searching donors with query:', query);
+
+        const donors = await Donor.find(query)
+            .select('name email bloodGroup age gender city state phone lastDonation donations createdAt')
+            .sort({ createdAt: -1 });
+
+        console.log(`Found ${donors.length} donors matching criteria:`, {
+            bloodGroup,
+            city,
+            totalDonors: donors.length
+        });
+
         res.json(donors);
     } catch (error) {
+        console.error('Error searching donors:', error);
         res.status(500).json({ message: error.message });
     }
 });
@@ -110,18 +124,59 @@ router.patch('/profile', auth, async (req, res) => {
 // Get blood requests for a hospital
 router.get('/blood-requests', auth, async (req, res) => {
     try {
+        console.log('Fetching blood requests for hospital:', req.user.userId);
+        
+        // Validate hospital ID
+        if (!req.user.userId) {
+            console.error('No hospital ID found in token');
+            return res.status(401).json({ message: 'Invalid authentication token' });
+        }
+
+        // Get hospital details
         const hospital = await Hospital.findById(req.user.userId);
         if (!hospital) {
+            console.error('Hospital not found for ID:', req.user.userId);
             return res.status(404).json({ message: 'Hospital not found' });
         }
 
+        console.log('Found hospital:', {
+            id: hospital._id,
+            name: hospital.name,
+            isVerified: hospital.isVerified
+        });
+
+        // Find all blood requests for this hospital
         const bloodRequests = await BloodRequest.find({ hospitalId: req.user.userId })
             .sort({ createdAt: -1 })
-            .populate('donorId', 'name bloodType contactNumber');
+            .populate('hospitalId', 'name email contactNumber');
 
-        res.json(bloodRequests);
+        console.log('Found blood requests:', bloodRequests.length);
+
+        // Format the response
+        const formattedRequests = bloodRequests.map(request => ({
+            _id: request._id,
+            hospitalId: request.hospitalId._id,
+            hospitalName: request.hospitalId.name,
+            bloodType: request.bloodType,
+            contactPerson: request.contactPerson,
+            contactNumber: request.contactNumber,
+            urgent: request.urgent,
+            createdAt: request.createdAt,
+            updatedAt: request.updatedAt
+        }));
+
+        console.log('Sending formatted requests:', formattedRequests.length);
+        res.json(formattedRequests);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('Error fetching blood requests:', {
+            message: error.message,
+            stack: error.stack,
+            userId: req.user?.userId
+        });
+        res.status(500).json({ 
+            message: 'Error fetching blood requests',
+            error: error.message
+        });
     }
 });
 

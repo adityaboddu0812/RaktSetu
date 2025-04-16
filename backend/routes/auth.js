@@ -37,6 +37,16 @@ router.post('/register/donor', async (req, res) => {
         const { password, ...otherData } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
         
+        // Validate age
+        if (otherData.age < 18 || otherData.age > 65) {
+            return res.status(400).json({ message: 'Age must be between 18 and 65 years' });
+        }
+
+        // Validate gender
+        if (!['Male', 'Female', 'Other'].includes(otherData.gender)) {
+            return res.status(400).json({ message: 'Invalid gender value' });
+        }
+        
         const donor = new Donor({
             ...otherData,
             password: hashedPassword
@@ -164,9 +174,11 @@ router.post('/login/admin', async (req, res) => {
         
         res.json({ 
             admin: {
+                _id: admin._id,
                 name: admin.name,
                 email: admin.email,
-                role: admin.role
+                role: 'admin',
+                isVerified: true
             },
             token 
         });
@@ -260,7 +272,11 @@ router.post('/login/hospital', async (req, res) => {
                 isVerified: hospital.isVerified,
                 phone: hospital.phone,
                 city: hospital.city,
-                state: hospital.state
+                state: hospital.state,
+                contactPerson: hospital.contactPerson,
+                requestsMade: hospital.requestsMade,
+                requestsCompleted: hospital.requestsCompleted,
+                createdAt: hospital.createdAt
             }, 
             token,
             message: 'Login successful'

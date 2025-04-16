@@ -1,8 +1,7 @@
-
 import React from 'react';
 import { AlertCircle } from 'lucide-react';
 import DonorCard from '@/components/DonorCard';
-import { Donor } from '@/types/bloodTypes';
+import { Donor } from '@/types/index';
 
 interface DonorListProps {
   donors: Donor[];
@@ -26,16 +25,18 @@ const DonorList: React.FC<DonorListProps> = ({ donors, onViewDetails }) => {
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {donors.map((donor) => (
         <DonorCard
-          key={donor.id}
-          id={donor.id}
+          key={donor._id}
+          id={donor._id}
           name={donor.name}
-          bloodType={donor.bloodType}
+          bloodGroup={donor.bloodGroup}
           age={donor.age}
           gender={donor.gender}
-          location={donor.location}
-          lastDonation={donor.lastDonation}
+          city={donor.city}
+          state={donor.state}
+          phone={donor.phone}
+          lastDonation={donor.lastDonation?.toString()}
           donations={donor.donations}
-          onView={() => onViewDetails(donor.id)}
+          onView={() => onViewDetails(donor._id)}
           isAdminView={true}
         />
       ))}
