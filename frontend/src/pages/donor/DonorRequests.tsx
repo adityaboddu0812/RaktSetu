@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
@@ -15,30 +14,58 @@ import { BloodRequest } from '@/types/bloodTypes';
 
 const DonorRequests: React.FC = () => {
   const { user } = useAuth();
-  const { getDonorById, getRequestsByDonor, updateBloodRequestStatus } = useData();
+  const { getDonorById, getRequestsByDonor, updateBloodRequestStatus, getBloodRequests } = useData();
   const navigate = useNavigate();
   
   const [activeTab, setActiveTab] = useState('available');
   
-  const donor = getDonorById(user?.id || '');
+  // Fetch blood requests when component mounts
+  useEffect(() => {
+    const fetchRequests = async () => {
+      try {
+        await getBloodRequests();
+      } catch (error) {
+        console.error('Error fetching blood requests:', error);
+        toast.error('Failed to fetch blood requests');
+      }
+    };
+    fetchRequests();
+  }, [getBloodRequests]);
   
-  const pendingRequests = getRequestsByDonor(user?.id || '', 'pending');
-  const acceptedRequests = getRequestsByDonor(user?.id || '', 'accepted');
-  const completedRequests = getRequestsByDonor(user?.id || '', 'completed');
+  const donor = getDonorById(user?._id || '');
   
-  const handleAcceptRequest = (requestId: string) => {
-    updateBloodRequestStatus(requestId, 'accepted', user?.id);
-    toast.success('You have accepted the blood donation request');
+  const pendingRequests = getRequestsByDonor(user?._id || '', 'pending');
+  const acceptedRequests = getRequestsByDonor(user?._id || '', 'accepted');
+  const completedRequests = getRequestsByDonor(user?._id || '', 'completed');
+  
+  const handleAcceptRequest = async (requestId: string) => {
+    try {
+      await updateBloodRequestStatus(requestId, 'accepted');
+      toast.success('You have accepted the blood donation request');
+    } catch (error) {
+      console.error('Error accepting request:', error);
+      toast.error('Failed to accept request');
+    }
   };
   
-  const handleCompleteRequest = (requestId: string) => {
-    updateBloodRequestStatus(requestId, 'completed', user?.id);
-    toast.success('Thank you for your donation!');
+  const handleCompleteRequest = async (requestId: string) => {
+    try {
+      await updateBloodRequestStatus(requestId, 'completed');
+      toast.success('Thank you for your donation!');
+    } catch (error) {
+      console.error('Error completing request:', error);
+      toast.error('Failed to complete request');
+    }
   };
   
-  const handleCancelRequest = (requestId: string) => {
-    updateBloodRequestStatus(requestId, 'cancelled');
-    toast.info('Request has been cancelled');
+  const handleCancelRequest = async (requestId: string) => {
+    try {
+      await updateBloodRequestStatus(requestId, 'cancelled');
+      toast.info('Request has been cancelled');
+    } catch (error) {
+      console.error('Error cancelling request:', error);
+      toast.error('Failed to cancel request');
+    }
   };
   
   const handleViewRequest = (requestId: string) => {
@@ -84,16 +111,16 @@ const DonorRequests: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {pendingRequests.map((request) => (
                     <BloodRequestCard
-                      key={request.id}
-                      id={request.id}
+                      key={request._id}
+                      id={request._id}
                       hospitalName={request.hospitalName}
                       bloodType={request.bloodType}
                       urgent={request.urgent}
                       status={request.status}
-                      location={request.location}
+                      location={`${request.hospitalLocation}`}
                       createdAt={request.createdAt}
-                      onAccept={() => handleAcceptRequest(request.id)}
-                      onView={() => handleViewRequest(request.id)}
+                      onAccept={() => handleAcceptRequest(request._id)}
+                      onView={() => handleViewRequest(request._id)}
                       isDonorView={true}
                     />
                   ))}
@@ -105,7 +132,7 @@ const DonorRequests: React.FC = () => {
                       <AlertTriangle className="h-12 w-12 text-yellow-500 mx-auto" />
                       <h3 className="text-xl font-semibold">No Matching Requests</h3>
                       <p className="text-gray-500">
-                        There are currently no blood donation requests matching your blood type ({donor.bloodType}).
+                        There are currently no blood donation requests matching your blood type ({donor.bloodGroup}).
                       </p>
                     </div>
                   </CardContent>
@@ -118,16 +145,16 @@ const DonorRequests: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {acceptedRequests.map((request) => (
                     <BloodRequestCard
-                      key={request.id}
-                      id={request.id}
+                      key={request._id}
+                      id={request._id}
                       hospitalName={request.hospitalName}
                       bloodType={request.bloodType}
                       urgent={request.urgent}
                       status={request.status}
-                      location={request.location}
+                      location={`${request.hospitalLocation}`}
                       createdAt={request.createdAt}
-                      onComplete={() => handleCompleteRequest(request.id)}
-                      onCancel={() => handleCancelRequest(request.id)}
+                      onComplete={() => handleCompleteRequest(request._id)}
+                      onCancel={() => handleCancelRequest(request._id)}
                       isDonorView={true}
                     />
                   ))}
@@ -150,15 +177,15 @@ const DonorRequests: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {completedRequests.map((request) => (
                     <BloodRequestCard
-                      key={request.id}
-                      id={request.id}
+                      key={request._id}
+                      id={request._id}
                       hospitalName={request.hospitalName}
                       bloodType={request.bloodType}
                       urgent={request.urgent}
                       status={request.status}
-                      location={request.location}
+                      location={`${request.hospitalLocation}`}
                       createdAt={request.createdAt}
-                      onView={() => handleViewRequest(request.id)}
+                      onView={() => handleViewRequest(request._id)}
                       showActionButtons={false}
                       isDonorView={true}
                     />

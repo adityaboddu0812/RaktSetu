@@ -12,18 +12,18 @@ interface DataContextType {
   bloodRequests: BloodRequest[];
   donors: Donor[];
   hospitals: Hospital[];
-  addBloodRequest: (request: Omit<BloodRequest, 'id' | 'createdAt' | 'updatedAt'>) => Promise<BloodRequest>;
-  updateBloodRequestStatus: (requestId: string, urgent: boolean) => Promise<void>;
+  addBloodRequest: (request: Omit<BloodRequest, '_id' | 'createdAt' | 'updatedAt'>) => Promise<BloodRequest>;
+  updateBloodRequestStatus: (requestId: string, status: 'pending' | 'accepted' | 'completed' | 'cancelled' | 'rejected') => Promise<void>;
   getDonorById: (id: string) => Donor | undefined;
   getHospitalById: (id: string) => Hospital | null;
   getRequestById: (id: string) => BloodRequest | undefined;
   getDonorsByBloodType: (bloodType: string) => Donor[];
   getRequestsByHospital: (hospitalId: string) => BloodRequest[];
-  getRequestsByDonor: (donorId: string) => BloodRequest[];
+  getRequestsByDonor: (donorId: string, status?: string) => BloodRequest[];
   getBloodRequestsForDonor: (donorId: string) => BloodRequest[];
   getCompletedRequestsByDonorId: (donorId: string) => BloodRequest[];
-  addDonor: (donor: Omit<Donor, 'id' | 'createdAt' | 'donations'>) => void;
-  addHospital: (hospital: Omit<Hospital, 'id' | 'createdAt' | 'requestsMade' | 'requestsCompleted'>) => void;
+  addDonor: (donor: Omit<Donor, '_id' | 'createdAt' | 'donations'>) => void;
+  addHospital: (hospital: Omit<Hospital, '_id' | 'createdAt' | 'requestsMade' | 'requestsCompleted'>) => void;
   verifyHospital: (hospitalId: string, verified: boolean) => Promise<void>;
   getBloodRequests: () => Promise<void>;
   createBloodRequest: (request: BloodRequestPayload) => Promise<BloodRequest>;
@@ -32,13 +32,28 @@ interface DataContextType {
 interface BloodRequestResponse {
   _id: string;
   hospitalId: string;
-  donorId: string;
   bloodType: string;
   contactPerson: string;
   contactNumber: string;
   urgent: boolean;
+  status: 'pending' | 'accepted' | 'completed' | 'cancelled' | 'rejected';
+  notifiedDonors: string[];
+  donorResponses: Array<{
+    donor: string;
+    response: 'accepted' | 'rejected';
+    respondedAt: string;
+  }>;
+  acceptedBy?: string;
   createdAt: string;
   updatedAt: string;
+  request: BloodRequest;
+  message: string;
+  notifiedDonorsCount: number;
+}
+
+interface BloodRequestUpdateResponse {
+  request: BloodRequest;
+  message: string;
 }
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -229,24 +244,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const hospitalsData = Array.isArray(data) ? data : [data];
         console.log('Processed hospital data:', hospitalsData);
 
-        const mappedHospitals = hospitalsData.map((hospital: any) => {
-          return {
-            _id: hospital._id || hospital.id,
+        const mappedHospitals = hospitalsData.map((hospital: any) => ({
+          _id: hospital._id || hospital.id,
             name: hospital.name,
             email: hospital.email,
-            licenseNumber: hospital.licenseNumber,
-            phone: hospital.phone,
+          licenseNumber: hospital.licenseNumber,
+          phone: hospital.phone,
             city: hospital.city || 'Not specified',
             state: hospital.state || 'Not specified',
-            location: hospital.city || 'Not specified',
             contactPerson: hospital.contactPerson || 'Not specified',
-            contactNumber: hospital.phone || 'Not specified',
-            isVerified: Boolean(hospital.isVerified),
+          isVerified: Boolean(hospital.isVerified),
             requestsMade: hospital.requestsMade || 0,
             requestsCompleted: hospital.requestsCompleted || 0,
-            createdAt: hospital.createdAt
-          };
-        });
+          createdAt: hospital.createdAt,
+          updatedAt: hospital.updatedAt || hospital.createdAt // Fallback to createdAt if updatedAt is not available
+        }));
 
         console.log('Final mapped hospitals:', mappedHospitals);
         setHospitals(mappedHospitals);
@@ -293,16 +305,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Update blood request status
-  const updateBloodRequestStatus = async (requestId: string, urgent: boolean /* Adjusted parameters if needed */) => {
-    console.warn("updateBloodRequestStatus needs backend implementation");
-    // Find the request and update its status/urgency locally
-    // TODO: Implement actual API call to PATCH request status/urgency
-    setBloodRequests(prevRequests =>
-      prevRequests.map(req =>
-        req._id === requestId ? { ...req, urgent: urgent, status: 'cancelled' /* Example status update */ } : req
-      )
-    );
-    toast.info(`Request ${requestId} status updated (mock)`);
+  const updateBloodRequestStatus = async (requestId: string, status: 'pending' | 'accepted' | 'completed' | 'cancelled' | 'rejected'): Promise<void> => {
+        const storedUser = localStorage.getItem('user');
+        if (!storedUser) {
+      throw new Error('User not authenticated');
+        }
+    
+        const user = JSON.parse(storedUser);
+    const endpoint = user.role === 'donor'
+      ? `${API_URL}/donor/blood-requests/${requestId}/respond`
+      : `${API_URL}/hospital/blood-requests/${requestId}`;
+    
+    try {
+      const apiResponse = await axios.post<BloodRequestUpdateResponse>(
+        endpoint, 
+        { response: status },
+        {
+          headers: {
+            'Authorization': `Bearer ${user.token}`
+          }
+        }
+      );
+
+      // Update local state with the updated request from the response
+      setBloodRequests(prev => prev.map(req => 
+        req._id === requestId ? apiResponse.data.request : req
+      ));
+
+      toast.success(apiResponse.data.message);
+    } catch (error: any) {
+      console.error('Error updating blood request:', error);
+      toast.error(error.response?.data?.message || 'Failed to update blood request');
+      throw error;
+    }
   };
 
   // Get donor by ID
@@ -314,14 +349,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const getHospitalById = (hospital_id: string): Hospital | null => {
     if (!hospital_id) {
         console.error("Invalid hospital ID provided:", hospital_id, new Error().stack); // Log stack trace
-        return null;
+      return null;
     }
     console.log("Getting hospital by id:", hospital_id);
     console.log("Current hospitals state:", hospitals);
     const hospital = hospitals.find(h => h._id === hospital_id);
-     if (!hospital) {
+    if (!hospital) {
         console.warn("No hospital found with id:", hospital_id);
-        return null;
+      return null;
     }
     return hospital;
   };
@@ -333,7 +368,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Get donors by blood type
   const getDonorsByBloodType = (bloodType: string): Donor[] => {
-    return donors.filter(donor => donor.bloodType === bloodType);
+    return donors.filter(donor => donor.bloodGroup === bloodType);
   };
 
   // Get requests made by a specific hospital
@@ -341,24 +376,44 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return bloodRequests.filter(req => req.hospitalId === hospitalId);
   };
 
-  // Get requests accepted/handled by a specific donor (assuming donorId exists on BloodRequest)
-  const getRequestsByDonor = (donorId: string): BloodRequest[] => {
-    console.warn('getRequestsByDonor assumes donorId exists on BloodRequest type');
-    // Adjust filtering based on actual BloodRequest structure if donorId is not present
-    return bloodRequests.filter(req => (req as any).donorId === donorId); // Use type assertion if needed
+  // Get requests relevant for a specific donor
+  const getRequestsByDonor = (donorId: string, status?: string): BloodRequest[] => {
+    if (!donorId) return [];
+    
+    return bloodRequests.filter(req => {
+      // If status is specified, filter by it
+      if (status && req.status !== status) return false;
+      
+      // Check if donor is in notifiedDonors array or is the acceptedBy donor
+      const isNotified = req.notifiedDonors?.includes(donorId);
+      const isAccepted = req.acceptedBy === donorId;
+      
+      return isNotified || isAccepted;
+    });
   };
 
-  // Get requests relevant for a donor to potentially accept (adjust logic as needed)
+  // Get requests relevant for a donor to potentially accept
   const getBloodRequestsForDonor = (donorId: string): BloodRequest[] => {
-    console.warn('getBloodRequestsForDonor assumes donorId exists on BloodRequest type for filtering');
-    // Example: Return pending requests NOT associated with the current donor? Needs clear definition.
-    return bloodRequests.filter(req => req.status === 'pending' && (req as any).donorId !== donorId);
+    if (!donorId) return [];
+    
+    return bloodRequests.filter(req => {
+      // Only show pending requests
+      if (req.status !== 'pending') return false;
+      
+      // Check if donor is in notifiedDonors array but hasn't responded yet
+      const isNotified = req.notifiedDonors?.includes(donorId);
+      const hasResponded = req.donorResponses?.some(response => response.donor === donorId);
+      
+      return isNotified && !hasResponded;
+    });
   };
 
   // Get completed requests by a specific donor (assuming donorId exists)
   const getCompletedRequestsByDonorId = (donorId: string): BloodRequest[] => {
-    console.warn('getCompletedRequestsByDonorId assumes donorId exists on BloodRequest type');
-    return bloodRequests.filter(req => req.status === 'completed' && (req as any).donorId === donorId);
+    return bloodRequests.filter(request => 
+      request.status === 'completed' && 
+      request.acceptedBy === donorId
+    );
   };
 
   // Add a new donor
@@ -451,37 +506,62 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Get all blood requests (placeholder, might be redundant with useEffect fetch)
   const getBloodRequests = async () => {
-    console.warn("getBloodRequests function called, likely redundant with useEffect fetch.");
-    // This function might not be needed if useEffect handles fetching.
-    // If needed, ensure it fetches data correctly based on role.
+    const storedUser = localStorage.getItem('user');
+    if (!storedUser) {
+      throw new Error('User not authenticated');
+    }
+    
+    const user = JSON.parse(storedUser);
+    const endpoint = user.role === 'hospital' 
+      ? `${API_URL}/hospital/blood-requests`
+      : `${API_URL}/donor/blood-requests`;
+    
+    try {
+      const response = await axios.get<BloodRequest[]>(endpoint, {
+        headers: {
+          'Authorization': `Bearer ${user.token}`
+        }
+      });
+      
+      setBloodRequests(response.data);
+    } catch (error: any) {
+      console.error('Error fetching blood requests:', error);
+      toast.error(error.response?.data?.message || 'Failed to fetch blood requests');
+      throw error;
+    }
   };
 
-  // Create blood request (Placeholder - needs backend integration)
+  // Create blood request
   const createBloodRequest = async (request: BloodRequestPayload): Promise<BloodRequest> => {
-    console.warn("createBloodRequest needs full backend implementation using axios/fetch");
-    // TODO: Replace mock implementation with actual API call
-    // Example of how it might look (needs correct endpoint and payload structure):
-    // const token = localStorage.getItem('token');
-    // const response = await axios.post(`${API_URL}/hospital/blood-requests`, request, {
-    //   headers: { Authorization: `Bearer ${token}` }
-    // });
-    // const createdRequest = response.data; 
-    // setBloodRequests(prev => [...prev, createdRequest]);
-    // return createdRequest;
+    const storedUser = localStorage.getItem('user');
+    if (!storedUser) {
+      throw new Error('User not authenticated');
+    }
+    
+    const user = JSON.parse(storedUser);
+    
+    try {
+      const response = await axios.post<BloodRequestResponse>(
+        `${API_URL}/hospital/blood-requests`,
+        request,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${user.token}`
+          }
+        }
+      );
 
-    // Mock Implementation:
-    const mockRequest: BloodRequest = {
-      ...request,
-      _id: Math.random().toString(36).substring(2),
-      hospitalId: 'mockHospitalId', // Needs real ID
-      hospitalName: 'Mock Hospital', // Needs real name
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setBloodRequests(prev => [...prev, mockRequest]);
-    toast.success("Blood request created (mock)");
-    return mockRequest;
+      const newRequest = response.data.request;
+      setBloodRequests(prev => [...prev, newRequest]);
+      
+      toast.success(`Blood request created successfully. ${response.data.notifiedDonorsCount} donors notified.`);
+      return newRequest;
+    } catch (error: any) {
+      console.error('Error creating blood request:', error);
+      toast.error(error.response?.data?.message || 'Failed to create blood request');
+      throw error;
+    }
   };
 
   return (

@@ -4,13 +4,25 @@ export interface BloodRequest {
   _id: string;
   hospitalId: string;
   hospitalName: string;
+  hospitalEmail: string;
+  hospitalPhone: string;
+  hospitalLocation: string;
   bloodType: string;
   contactPerson: string;
   contactNumber: string;
   urgent: boolean;
-  status: 'pending' | 'accepted' | 'completed' | 'cancelled';
+  status: 'pending' | 'accepted' | 'completed' | 'cancelled' | 'rejected';
+  notifiedDonors: string[];
+  donorResponses: DonorResponse[];
+  acceptedBy?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface DonorResponse {
+  donor: string;
+  response: 'accepted' | 'rejected';
+  respondedAt: string;
 }
 
 export interface BloodRequestPayload {
@@ -20,18 +32,30 @@ export interface BloodRequestPayload {
   urgent: boolean;
 }
 
+export interface BloodRequestResponse {
+  message: string;
+  requestId: string;
+  notifiedDonorsCount: number;
+  request: BloodRequest;
+}
+
+export interface BloodRequestUpdateResponse {
+  message: string;
+  request: BloodRequest;
+}
+
 export interface Donor {
   _id: string;
   name: string;
   email: string;
   bloodGroup: string;
-  age?: number;
-  gender?: string;
+  phone: string;
   city: string;
   state: string;
-  phone: string;
+  age: number;
+  gender: string;
   lastDonation?: string;
-  donations?: number;
+  donations: number;
   createdAt: string;
 }
 
@@ -43,14 +67,21 @@ export interface Hospital {
   phone: string;
   city: string;
   state: string;
-  location?: string;
   contactPerson: string;
-  contactNumber?: string;
   isVerified: boolean;
   requestsMade: number;
   requestsCompleted: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface User {
+  _id: string;
+  name: string;
+  email: string;
+  role: 'donor' | 'hospital' | 'admin';
+  token: string;
+  isVerified?: boolean;
 }
 
 export interface DataContextType {

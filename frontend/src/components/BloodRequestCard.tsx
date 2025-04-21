@@ -1,32 +1,27 @@
 import React from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, Calendar, Clock, MapPin } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { BloodRequest } from '@/types/bloodTypes';
 
 interface BloodRequestCardProps {
   id: string;
   hospitalName: string;
   bloodType: string;
   urgent: boolean;
-  status: 'pending' | 'accepted' | 'completed' | 'cancelled';
+  status: 'pending' | 'accepted' | 'completed' | 'cancelled' | 'rejected';
   location: string;
   createdAt: string;
+  onView: () => void;
   onAccept?: () => void;
   onCancel?: () => void;
   onComplete?: () => void;
-  onView?: () => void;
   showActionButtons?: boolean;
   isDonorView?: boolean;
+  notifiedDonorsCount?: number;
+  acceptedBy?: string;
+  description?: string;
 }
-
-const statusColors = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  accepted: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800',
-  cancelled: 'bg-gray-100 text-gray-800',
-};
 
 const BloodRequestCard: React.FC<BloodRequestCardProps> = ({
   id,
@@ -36,109 +31,109 @@ const BloodRequestCard: React.FC<BloodRequestCardProps> = ({
   status,
   location,
   createdAt,
+  onView,
   onAccept,
   onCancel,
   onComplete,
-  onView,
   showActionButtons = true,
   isDonorView = false,
+  notifiedDonorsCount = 0,
+  acceptedBy,
+  description
 }) => {
-  const createdDate = new Date(createdAt);
-  const timeAgo = formatDistanceToNow(createdDate, { addSuffix: true });
-  
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'accepted':
+        return 'bg-green-100 text-green-800';
+      case 'completed':
+        return 'bg-blue-100 text-blue-800';
+      case 'cancelled':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   return (
-    <Card className={`overflow-hidden ${urgent ? 'border-red-300' : ''}`}>
-      {urgent && (
-        <div className="bg-red-500 text-white px-4 py-1 text-xs flex items-center justify-center font-medium">
-          <AlertCircle className="h-3 w-3 mr-1" />
-          URGENT REQUEST
-        </div>
-      )}
-      
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
+    <Card className="w-full hover:shadow-lg transition-shadow duration-200">
+      <CardContent className="p-4">
+        <div className="flex justify-between items-start">
           <div>
-            <CardTitle className="text-lg">{hospitalName}</CardTitle>
-            <div className="flex items-center text-sm text-gray-500 mt-1">
-              <MapPin className="h-3 w-3 mr-1" />
-              {location}
-            </div>
+            <h3 className="font-medium text-lg">{hospitalName}</h3>
+            <p className="text-sm text-gray-500">{location}</p>
+          </div>
+          <Badge className={getStatusColor(status)}>
+            {status.charAt(0).toUpperCase() + status.slice(1)}
+          </Badge>
+        </div>
+
+        <div className="mt-4 space-y-2">
+          <div className="flex justify-between">
+            <span className="text-sm text-gray-500">Blood Type</span>
+            <span className="font-medium text-red-600">{bloodType}</span>
           </div>
           
-          <div className="flex flex-col items-end">
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className={statusColors[status]}>
-                {status.charAt(0).toUpperCase() + status.slice(1)}
-              </Badge>
-            </div>
-            <div className="flex items-center text-xs text-gray-500 mt-2">
-              <Clock className="h-3 w-3 mr-1" />
-              {timeAgo}
-            </div>
+          <div className="flex justify-between">
+            <span className="text-sm text-gray-500">Urgency</span>
+            <Badge variant={urgent ? "destructive" : "secondary"}>
+              {urgent ? 'Urgent (Emergency)' : 'Regular'}
+            </Badge>
           </div>
-        </div>
-      </CardHeader>
-      
-      <CardContent className="pb-3">
-        <div className="flex items-center justify-center my-3">
-          <div className="text-center">
-            <div className="w-16 h-16 rounded-full bg-blood-100 border border-blood-200 flex items-center justify-center mx-auto">
-              <span className="text-blood-800 text-xl font-bold">{bloodType}</span>
-            </div>
-            <p className="mt-1 text-sm font-medium">Blood Type</p>
+          
+          <div className="flex justify-between">
+            <span className="text-sm text-gray-500">Created</span>
+            <span className="text-sm">
+              {new Date(createdAt).toLocaleDateString()}
+            </span>
           </div>
-        </div>
-        
-        <div className="mt-2 text-sm text-gray-500 flex items-center">
-          <Calendar className="h-3 w-3 mr-1" />
-          Requested on {createdDate.toLocaleDateString()}
-        </div>
-      </CardContent>
-      
-      {showActionButtons && (
-        <CardFooter className="bg-gray-50 px-6 py-3 flex justify-between">
-          {isDonorView ? (
-            status === 'pending' ? (
-              <>
-                <Button variant="default" size="sm" onClick={onAccept}>
-                  Accept Request
-                </Button>
-                <Button variant="outline" size="sm" onClick={onView}>
-                  View Details
-                </Button>
-              </>
-            ) : status === 'accepted' ? (
-              <>
-                <Button variant="default" size="sm" onClick={onComplete}>
-                  Mark as Donated
-                </Button>
-                <Button variant="destructive" size="sm" onClick={onCancel}>
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <Button variant="outline" size="sm" onClick={onView} className="ml-auto">
-                View Details
-              </Button>
-            )
-          ) : (
-            status === 'pending' ? (
-              <>
-                <Button variant="destructive" size="sm" onClick={onCancel}>
-                  Cancel Request
-                </Button>
-                <Button variant="outline" size="sm" onClick={onView}>
-                  View Details
-                </Button>
-              </>
-            ) : (
-              <Button variant="outline" size="sm" onClick={onView} className="ml-auto">
-                View Details
-              </Button>
-            )
+
+          {description && (
+            <div className="mt-2">
+              <span className="text-sm text-gray-500">Description</span>
+              <p className="text-sm mt-1">{description}</p>
+            </div>
           )}
-        </CardFooter>
-      )}
+
+          {notifiedDonorsCount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-500">Notified Donors</span>
+              <span className="text-sm font-medium">{notifiedDonorsCount}</span>
+            </div>
+          )}
+
+          {acceptedBy && (
+            <div className="flex justify-between">
+              <span className="text-sm text-gray-500">Accepted By</span>
+              <span className="text-sm font-medium">{acceptedBy}</span>
+            </div>
+          )}
+        </div>
+
+        {showActionButtons && (
+          <div className="mt-4 flex justify-end gap-2">
+            {isDonorView && status === 'pending' && onAccept && (
+              <Button variant="default" onClick={onAccept}>
+                Accept Request
+              </Button>
+            )}
+            {isDonorView && status === 'accepted' && onComplete && (
+              <Button variant="default" onClick={onComplete}>
+                Mark as Completed
+              </Button>
+            )}
+            {status !== 'completed' && status !== 'cancelled' && onCancel && (
+              <Button variant="destructive" onClick={onCancel}>
+                Cancel
+              </Button>
+            )}
+            <Button variant="outline" onClick={onView}>
+              View Details
+            </Button>
+          </div>
+        )}
+      </CardContent>
     </Card>
   );
 };

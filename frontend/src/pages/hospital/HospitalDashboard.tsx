@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { PlusCircle } from 'lucide-react';
+import { PlusCircle, AlertCircle, User, CheckCircle, XCircle, Clock } from 'lucide-react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import HospitalProfile from '@/components/hospital/HospitalProfile';
@@ -11,11 +11,43 @@ import RequestDetailsDialog from '@/components/hospital/RequestDetailsDialog';
 import VerificationNotice from '@/components/hospital/VerificationNotice';
 import BloodRequestTabs from '@/components/hospital/BloodRequestTabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle } from 'lucide-react';
 import BloodRequestCard from '@/components/BloodRequestCard';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { BloodRequest, Hospital } from '@/types/bloodTypes';
+import { BloodRequest, Donor } from '@/types/bloodTypes';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
+interface DonorDetails {
+  _id: string;
+  name: string;
+  bloodGroup: string;
+  phone: string;
+  city?: string;
+  state?: string;
+  lastDonation?: string;
+}
+
+interface DonorResponse {
+  donor: string;
+  response: 'accepted' | 'rejected';
+  respondedAt: string;
+}
+
+interface BloodRequestDetails {
+  _id: string;
+  hospitalId: string;
+  hospitalName: string;
+  bloodType: string;
+  contactPerson: string;
+  contactNumber: string;
+  urgent: boolean;
+  status: 'pending' | 'accepted' | 'completed' | 'cancelled' | 'rejected';
+  createdAt: string;
+  updatedAt: string;
+  notifiedDonors: DonorDetails[];
+  donorResponses: DonorResponse[];
+  acceptedBy?: DonorDetails;
+}
 
 const HospitalDashboard: React.FC = () => {
   const { user, logout } = useAuth();
@@ -24,6 +56,7 @@ const HospitalDashboard: React.FC = () => {
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [isRequestDetailsOpen, setIsRequestDetailsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [selectedRequest, setSelectedRequest] = useState<BloodRequestDetails | null>(null);
   
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -69,6 +102,31 @@ const HospitalDashboard: React.FC = () => {
 
   }, [user, navigate, logout]);
 
+  const handleViewDetails = async (requestId: string) => {
+    try {
+      const token = user?.token;
+      console.log('Fetching details for request:', requestId);
+      
+      const response = await axios.get<BloodRequestDetails>(
+        `http://localhost:5001/api/hospital/blood-requests/${requestId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      console.log('Request details response:', response.data);
+      setSelectedRequest(response.data);
+      setSelectedRequestId(requestId);
+      setIsRequestDetailsOpen(true);
+    } catch (error: any) {
+      console.error('Error fetching request details:', error);
+      toast.error(error.response?.data?.message || 'Failed to fetch request details');
+    }
+  };
+
   const handleCancelRequest = async (requestId: string) => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -91,7 +149,7 @@ const HospitalDashboard: React.FC = () => {
       setBloodRequests(prev => prev.map(req => 
         req._id === requestId ? { ...req, status: 'cancelled' } : req
       ));
-      toast.success('Request action attempted.');
+      toast.success('Request cancelled successfully');
     } catch (error: any) {
       console.error('Error updating request:', error);
       if (error.response?.status === 401) {
@@ -101,18 +159,10 @@ const HospitalDashboard: React.FC = () => {
         if (logout) logout();
         navigate('/login');
       } else {
-        toast.error(error.response?.data?.message || 'Failed to update request');
+        toast.error(error.response?.data?.message || 'Failed to cancel request');
       }
     }
   };
-  
-  const handleViewDetails = (requestId: string) => {
-    setSelectedRequestId(requestId);
-    setIsRequestDetailsOpen(true);
-  };
-  
-  const selectedRequest = selectedRequestId ? 
-    bloodRequests.find(req => req._id === selectedRequestId) : null;
   
   if (loading) {
     return (
@@ -212,10 +262,9 @@ const HospitalDashboard: React.FC = () => {
                               hospitalName={request.hospitalName}
                               bloodType={request.bloodType}
                               urgent={request.urgent}
-                              status={request.status || 'pending'}
+                              status={request.status === 'rejected' ? 'cancelled' : request.status}
                               location={user.location}
                               createdAt={request.createdAt}
-                              onCancel={() => handleCancelRequest(request._id)}
                               onView={() => handleViewDetails(request._id)}
                               showActionButtons={true}
                               isDonorView={false}
@@ -231,6 +280,137 @@ const HospitalDashboard: React.FC = () => {
           </div>
         </div>
       </main>
+      
+      {/* Request Details Dialog */}
+      <Dialog open={isRequestDetailsOpen} onOpenChange={setIsRequestDetailsOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Request Details</DialogTitle>
+            <DialogDescription>
+              Complete information about this blood request
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedRequest && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Status</h3>
+                  <Badge className={
+                    selectedRequest.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                    selectedRequest.status === 'accepted' ? 'bg-green-100 text-green-800' :
+                    selectedRequest.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                    'bg-red-100 text-red-800'
+                  }>
+                    {selectedRequest.status.charAt(0).toUpperCase() + selectedRequest.status.slice(1)}
+                  </Badge>
+                </div>
+                
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Blood Type</h3>
+                  <p className="font-medium">{selectedRequest.bloodType}</p>
+                </div>
+                
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Urgency</h3>
+                  <p className="font-medium">
+                    {selectedRequest.urgent ? 'Urgent (Emergency)' : 'Regular'}
+                  </p>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Created</h3>
+                  <p className="font-medium">
+                    {new Date(selectedRequest.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+
+              {/* Notified Donors Section */}
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium">Notified Donors</h3>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center">
+                      <User className="h-5 w-5 text-gray-500 mr-2" />
+                      <span className="font-medium">Total: {selectedRequest.notifiedDonors?.length || 0}</span>
+                    </div>
+                    <div className="flex items-center">
+                      <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
+                      <span className="font-medium">
+                        Accepted: {selectedRequest.donorResponses?.filter(r => r.response === 'accepted').length || 0}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-lg p-4">
+                  {selectedRequest.notifiedDonors && selectedRequest.notifiedDonors.length > 0 ? (
+                    <div className="space-y-4">
+                      {selectedRequest.notifiedDonors.map((donor) => {
+                        const response = selectedRequest.donorResponses?.find(r => r.donor === donor._id);
+                        const location = donor.city && donor.state ? `${donor.city}, ${donor.state}` : undefined;
+                        
+                        return (
+                          <div key={donor._id} className="bg-white p-4 rounded-lg shadow-sm">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="font-medium">{donor.name}</h4>
+                                <p className="text-sm text-gray-500">{donor.bloodGroup}</p>
+                              </div>
+                              <Badge className={
+                                response?.response === 'accepted' ? 'bg-green-100 text-green-800' :
+                                response?.response === 'rejected' ? 'bg-red-100 text-red-800' :
+                                'bg-yellow-100 text-yellow-800'
+                              }>
+                                {response ? response.response.charAt(0).toUpperCase() + response.response.slice(1) : 'Pending'}
+                              </Badge>
+                            </div>
+                            <div className="mt-2 text-sm text-gray-500">
+                              {location && <p>Location: {location}</p>}
+                              {donor.lastDonation && (
+                                <p>Last Donation: {new Date(donor.lastDonation).toLocaleDateString()}</p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-500">
+                      No donors have been notified yet
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Accepted Donor Section */}
+              {selectedRequest.acceptedBy && (
+                <div className="border-t pt-4">
+                  <h3 className="text-lg font-medium mb-4">Accepted Donor</h3>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium">{selectedRequest.acceptedBy.name}</h4>
+                        <p className="text-sm text-gray-500">{selectedRequest.acceptedBy.bloodGroup}</p>
+                      </div>
+                      <Badge className="bg-green-100 text-green-800">
+                        Accepted
+                      </Badge>
+                    </div>
+                    <div className="mt-2 text-sm text-gray-500">
+                      {selectedRequest.acceptedBy.city && selectedRequest.acceptedBy.state && (
+                        <p>Location: {`${selectedRequest.acceptedBy.city}, ${selectedRequest.acceptedBy.state}`}</p>
+                      )}
+                      <p>Contact: {selectedRequest.acceptedBy.phone}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       
       <Footer />
     </div>

@@ -3,19 +3,31 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Phone, Droplets, Calendar } from 'lucide-react';
+import { MapPin, Phone, Droplets, Calendar, AlertCircle, Clock, User } from 'lucide-react';
 import { format, parseISO, addMonths, isAfter } from 'date-fns';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import DonorEligibility from '@/components/DonorEligibility';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { Button } from '@/components/ui/button';
+import { BloodRequest } from '@/types/bloodTypes';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 const DonorDashboard: React.FC = () => {
   const { user } = useAuth();
-  const { getCompletedRequestsByDonorId } = useData();
+  const { getRequestsByDonor } = useData();
   const [donor, setDonor] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [bloodRequests, setBloodRequests] = useState<BloodRequest[]>([]);
+  const [selectedRequest, setSelectedRequest] = useState<BloodRequest | null>(null);
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
 
   useEffect(() => {
     const fetchDonorProfile = async () => {
@@ -40,8 +52,62 @@ const DonorDashboard: React.FC = () => {
     }
   }, [user]);
 
-  const completedRequests = getCompletedRequestsByDonorId(user?.id || '');
-  
+  useEffect(() => {
+    const fetchBloodRequests = async () => {
+      try {
+        const response = await axios.get<BloodRequest[]>('http://localhost:5001/api/donor/blood-requests', {
+          headers: {
+            Authorization: `Bearer ${user?.token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        console.log('Fetched blood requests:', response.data);
+        setBloodRequests(response.data);
+      } catch (error) {
+        console.error('Error fetching blood requests:', error);
+        toast.error('Failed to fetch blood requests');
+      }
+    };
+
+    if (user?.token) {
+      fetchBloodRequests();
+    }
+  }, [user]);
+
+  const handleAcceptRequest = async (requestId: string) => {
+    try {
+      await axios.post(
+        `http://localhost:5001/api/donor/blood-requests/${requestId}/respond`,
+        { response: 'accepted' },
+        {
+          headers: {
+            Authorization: `Bearer ${user?.token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      // Update local state to reflect the change
+      setBloodRequests(prev => 
+        prev.map(req => 
+          req._id === requestId 
+            ? { ...req, status: 'accepted' } 
+            : req
+        )
+      );
+      
+      toast.success('Blood request accepted successfully');
+    } catch (error) {
+      console.error('Error accepting request:', error);
+      toast.error('Failed to accept request');
+    }
+  };
+
+  const handleViewDetails = (request: BloodRequest) => {
+    setSelectedRequest(request);
+    setIsDetailsDialogOpen(true);
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen">
@@ -168,39 +234,84 @@ const DonorDashboard: React.FC = () => {
               
               <Card>
                 <CardHeader>
-                  <CardTitle>Recent Donations</CardTitle>
+                  <CardTitle>Blood Requests</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {completedRequests.length > 0 ? (
+                  {bloodRequests.length > 0 ? (
                     <div className="space-y-4">
-                      {completedRequests.slice(0, 3).map((request) => (
-                        <div key={request.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-md">
-                          <div>
-                            <p className="font-medium">{request.hospitalName}</p>
-                            <div className="flex items-center text-sm text-gray-500">
-                              <MapPin className="h-3 w-3 mr-1" />
-                              <span>{request.location}</span>
+                      {bloodRequests.map((request) => (
+                        <div key={request._id} className="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <h3 className="font-medium text-lg">{request.hospitalName}</h3>
+                              <div className="flex items-center text-sm text-gray-500">
+                                <MapPin className="h-3 w-3 mr-1" />
+                                <span>{request.hospitalLocation}</span>
+                              </div>
                             </div>
-                            <div className="flex items-center mt-1">
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                Completed
-                              </Badge>
-                              <Badge variant="outline" className="ml-2 bg-blood-50 text-blood-700 border-blood-200">
-                                {request.bloodType}
-                              </Badge>
-                            </div>
+                            <Badge variant="outline" className={
+                              request.urgent ? 'bg-red-100 text-red-800 border-red-200' : 'bg-gray-100 text-gray-800 border-gray-200'
+                            }>
+                              {request.urgent ? 'Urgent' : 'Regular'}
+                            </Badge>
                           </div>
-                          <div className="text-right text-sm text-gray-500">
-                            <p>{format(parseISO(request.createdAt), "MMM d, yyyy")}</p>
+                          
+                          <div className="flex items-center gap-2 mt-3">
+                            <Badge variant="outline" className="bg-blood-50 text-blood-700 border-blood-200">
+                              {request.bloodType}
+                            </Badge>
+                            <Badge variant="outline" className={
+                              request.status === 'pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                              request.status === 'accepted' ? 'bg-green-50 text-green-700 border-green-200' :
+                              request.status === 'completed' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                              'bg-red-50 text-red-700 border-red-200'
+                            }>
+                              {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                            </Badge>
+                          </div>
+                          
+                          <div className="flex justify-between items-center mt-3 pt-3 border-t">
+                            <div className="text-sm text-gray-500">
+                              {format(parseISO(request.createdAt), "MMM d, yyyy")}
+                            </div>
+                            <div className="flex gap-2">
+                              {request.status === 'pending' && (
+                                <Button 
+                                  size="sm" 
+                                  variant="default"
+                                  onClick={() => handleAcceptRequest(request._id)}
+                                >
+                                  Accept Request
+                                </Button>
+                              )}
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => handleViewDetails(request)}
+                              >
+                                View Details
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))}
+                      {bloodRequests.length > 3 && (
+                        <div className="text-center pt-4">
+                          <Button variant="link" asChild>
+                            <a href="/donor/requests">View All Requests</a>
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                  ) :
+                  ) : (
                     <div className="text-center py-8">
-                      <p className="text-gray-500">No donation history yet</p>
+                      <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-xl font-semibold mb-2">No Blood Requests</h3>
+                      <p className="text-gray-500">
+                        There are currently no blood requests matching your blood type.
+                      </p>
                     </div>
-                  }
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -237,6 +348,106 @@ const DonorDashboard: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Blood Request Details Dialog */}
+        <Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Blood Request Details</DialogTitle>
+              <DialogDescription>
+                Complete information about this blood request
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedRequest && (
+              <div className="space-y-6">
+                {/* Hospital Information */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg">Hospital Information</h3>
+                  <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                    <div>
+                      <p className="text-sm text-gray-500">Hospital Name</p>
+                      <p className="font-medium">{selectedRequest.hospitalName}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Location</p>
+                      <p className="font-medium">{selectedRequest.hospitalLocation}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Contact Person</p>
+                      <p className="font-medium">{selectedRequest.contactPerson}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Contact Number</p>
+                      <p className="font-medium">{selectedRequest.contactNumber}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Request Details */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg">Request Details</h3>
+                  <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                    <div>
+                      <p className="text-sm text-gray-500">Blood Type</p>
+                      <Badge variant="outline" className="mt-1 bg-blood-50 text-blood-700 border-blood-200">
+                        {selectedRequest.bloodType}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Urgency</p>
+                      <Badge variant="outline" className={`mt-1 ${
+                        selectedRequest.urgent 
+                          ? 'bg-red-50 text-red-700 border-red-200' 
+                          : 'bg-gray-50 text-gray-700 border-gray-200'
+                      }`}>
+                        {selectedRequest.urgent ? 'Urgent' : 'Regular'}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Status</p>
+                      <Badge variant="outline" className={`mt-1 ${
+                        selectedRequest.status === 'pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                        selectedRequest.status === 'accepted' ? 'bg-green-50 text-green-700 border-green-200' :
+                        selectedRequest.status === 'completed' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        'bg-red-50 text-red-700 border-red-200'
+                      }`}>
+                        {selectedRequest.status.charAt(0).toUpperCase() + selectedRequest.status.slice(1)}
+                      </Badge>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Created On</p>
+                      <p className="font-medium">
+                        {format(parseISO(selectedRequest.createdAt), "PPP")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-2 pt-4 border-t">
+                  {selectedRequest.status === 'pending' && (
+                    <Button 
+                      onClick={() => {
+                        handleAcceptRequest(selectedRequest._id);
+                        setIsDetailsDialogOpen(false);
+                      }}
+                      variant="default"
+                    >
+                      Accept Request
+                    </Button>
+                  )}
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setIsDetailsDialogOpen(false)}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </main>
       
       <Footer />

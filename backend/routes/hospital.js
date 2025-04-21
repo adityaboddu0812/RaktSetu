@@ -126,12 +126,6 @@ router.get('/blood-requests', auth, async (req, res) => {
     try {
         console.log('Fetching blood requests for hospital:', req.user.userId);
         
-        // Validate hospital ID
-        if (!req.user.userId) {
-            console.error('No hospital ID found in token');
-            return res.status(401).json({ message: 'Invalid authentication token' });
-        }
-
         // Get hospital details
         const hospital = await Hospital.findById(req.user.userId);
         if (!hospital) {
@@ -148,7 +142,9 @@ router.get('/blood-requests', auth, async (req, res) => {
         // Find all blood requests for this hospital
         const bloodRequests = await BloodRequest.find({ hospitalId: req.user.userId })
             .sort({ createdAt: -1 })
-            .populate('hospitalId', 'name email contactNumber');
+            .populate('hospitalId', 'name email phone city state')
+            .populate('notifiedDonors', 'name email phone bloodGroup')
+            .populate('acceptedBy', 'name email phone bloodGroup');
 
         console.log('Found blood requests:', bloodRequests.length);
 
@@ -157,10 +153,29 @@ router.get('/blood-requests', auth, async (req, res) => {
             _id: request._id,
             hospitalId: request.hospitalId._id,
             hospitalName: request.hospitalId.name,
+            hospitalEmail: request.hospitalId.email,
+            hospitalPhone: request.hospitalId.phone,
+            hospitalLocation: `${request.hospitalId.city}, ${request.hospitalId.state}`,
             bloodType: request.bloodType,
             contactPerson: request.contactPerson,
             contactNumber: request.contactNumber,
             urgent: request.urgent,
+            status: request.status,
+            notifiedDonors: request.notifiedDonors.map(donor => ({
+                _id: donor._id,
+                name: donor.name,
+                email: donor.email,
+                phone: donor.phone,
+                bloodGroup: donor.bloodGroup
+            })),
+            donorResponses: request.donorResponses,
+            acceptedBy: request.acceptedBy ? {
+                _id: request.acceptedBy._id,
+                name: request.acceptedBy.name,
+                email: request.acceptedBy.email,
+                phone: request.acceptedBy.phone,
+                bloodGroup: request.acceptedBy.bloodGroup
+            } : null,
             createdAt: request.createdAt,
             updatedAt: request.updatedAt
         }));
@@ -184,151 +199,97 @@ router.get('/blood-requests', auth, async (req, res) => {
 router.post('/blood-requests', auth, async (req, res) => {
   try {
     console.log('Received blood request creation request:', req.body);
-    console.log('User from token:', {
-      userId: req.user.userId,
-      role: req.user.role,
-      fullUser: req.user
-    });
-
-    // Validate and convert userId to ObjectId
-    let hospitalId;
-    try {
-      hospitalId = new mongoose.Types.ObjectId(req.user.userId);
-      console.log('Converted hospital ID:', hospitalId);
-    } catch (error) {
-      console.error('Invalid hospital ID format:', req.user.userId);
-      return res.status(400).json({ 
-        message: 'Invalid hospital ID format',
-        details: { userId: req.user.userId }
-      });
-    }
-
-    // Get hospital details
-    const hospital = await Hospital.findById(hospitalId);
-    console.log('Hospital lookup result:', {
-      userId: hospitalId,
-      found: !!hospital,
-      hospital: hospital ? {
-        _id: hospital._id,
-        name: hospital.name,
-        isVerified: hospital.isVerified,
-        email: hospital.email
-      } : null
-    });
-
+    
+    // Validate hospital
+    const hospital = await Hospital.findById(req.user.userId);
     if (!hospital) {
-      console.error('Hospital not found for ID:', hospitalId);
-      return res.status(404).json({ 
-        message: 'Hospital not found',
-        details: {
-          userId: hospitalId,
-          role: req.user.role
-        }
-      });
+      return res.status(404).json({ message: 'Hospital not found' });
     }
-
     if (!hospital.isVerified) {
-      console.error('Hospital not verified:', hospitalId);
-      return res.status(403).json({ 
-        message: 'Hospital not verified',
-        details: {
-          userId: hospitalId,
-          name: hospital.name,
-          email: hospital.email
-        }
-      });
+      return res.status(403).json({ message: 'Hospital not verified' });
     }
 
     const { bloodType, contactPerson, contactNumber, urgent } = req.body;
 
     // Validate required fields
     if (!bloodType || !contactPerson || !contactNumber) {
-      console.error('Missing required fields:', { bloodType, contactPerson, contactNumber });
-      return res.status(400).json({ 
-        message: 'Missing required fields',
-        details: {
-          bloodType: !bloodType ? 'Blood type is required' : undefined,
-          contactPerson: !contactPerson ? 'Contact person is required' : undefined,
-          contactNumber: !contactNumber ? 'Contact number is required' : undefined
-        }
-      });
+      return res.status(400).json({ message: 'Missing required fields' });
     }
 
     // Validate blood type
     const validBloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
     if (!validBloodTypes.includes(bloodType)) {
-      console.error('Invalid blood type:', bloodType);
-      return res.status(400).json({ 
-        message: 'Invalid blood type',
-        details: { bloodType: 'Must be one of: ' + validBloodTypes.join(', ') }
-      });
+      return res.status(400).json({ message: 'Invalid blood type' });
     }
 
-    // Validate contact number format
-    const phoneRegex = /^[0-9]{10}$/;
-    if (!phoneRegex.test(contactNumber)) {
-      console.error('Invalid contact number format:', contactNumber);
-      return res.status(400).json({ 
-        message: 'Invalid contact number format',
-        details: { contactNumber: 'Must be a 10-digit number' }
-      });
+    // Find donors with matching blood type
+    console.log('Searching for donors with blood type:', bloodType);
+    const eligibleDonors = await Donor.find({
+      bloodGroup: bloodType
+    }).select('_id name email phone bloodGroup');
+
+    console.log('Found eligible donors:', eligibleDonors.length, eligibleDonors);
+
+    if (eligibleDonors.length === 0) {
+      console.log('No donors found with blood type:', bloodType);
     }
 
-    // Create new blood request
+    // Create blood request
     const bloodRequest = new BloodRequest({
       hospitalId: hospital._id,
       bloodType,
       contactPerson,
       contactNumber,
-      urgent: urgent || false
+      urgent,
+      notifiedDonors: eligibleDonors.map(donor => donor._id),
+      donorResponses: [],
+      status: 'pending'
     });
 
-    console.log('Saving blood request:', {
-      hospitalId: bloodRequest.hospitalId,
-      bloodType: bloodRequest.bloodType,
-      contactPerson: bloodRequest.contactPerson,
-      contactNumber: bloodRequest.contactNumber,
-      urgent: bloodRequest.urgent
-    });
-
-    // Save to database
     await bloodRequest.save();
+    console.log('Blood request created:', bloodRequest._id);
 
-    // Populate hospital details in response
+    // Update hospital's requests made count
+    hospital.requestsMade += 1;
+    await hospital.save();
+
+    // Populate the response with donor details
     const populatedRequest = await BloodRequest.findById(bloodRequest._id)
-      .populate('hospitalId', 'name email contactNumber');
+      .populate('hospitalId', 'name email phone city state')
+      .populate('notifiedDonors', 'name email phone bloodGroup');
 
-    console.log('Blood request created successfully:', {
-      _id: populatedRequest._id,
-      hospitalId: populatedRequest.hospitalId._id,
-      hospitalName: populatedRequest.hospitalId.name,
-      bloodType: populatedRequest.bloodType,
-      contactPerson: populatedRequest.contactPerson,
-      contactNumber: populatedRequest.contactNumber,
-      urgent: populatedRequest.urgent
-    });
-
+    // Return response with eligible donors count
     res.status(201).json({
-      _id: populatedRequest._id,
-      hospitalId: populatedRequest.hospitalId._id,
-      hospitalName: populatedRequest.hospitalId.name,
-      bloodType: populatedRequest.bloodType,
-      contactPerson: populatedRequest.contactPerson,
-      contactNumber: populatedRequest.contactNumber,
-      urgent: populatedRequest.urgent
+      message: 'Blood request created successfully',
+      requestId: bloodRequest._id,
+      notifiedDonorsCount: eligibleDonors.length,
+      request: {
+        _id: populatedRequest._id,
+        hospitalId: populatedRequest.hospitalId._id,
+        hospitalName: populatedRequest.hospitalId.name,
+        hospitalEmail: populatedRequest.hospitalId.email,
+        hospitalPhone: populatedRequest.hospitalId.phone,
+        hospitalLocation: `${populatedRequest.hospitalId.city}, ${populatedRequest.hospitalId.state}`,
+        bloodType: populatedRequest.bloodType,
+        contactPerson: populatedRequest.contactPerson,
+        contactNumber: populatedRequest.contactNumber,
+        urgent: populatedRequest.urgent,
+        status: populatedRequest.status,
+        notifiedDonors: populatedRequest.notifiedDonors.map(donor => ({
+          _id: donor._id,
+          name: donor.name,
+          email: donor.email,
+          phone: donor.phone,
+          bloodGroup: donor.bloodGroup
+        })),
+        donorResponses: populatedRequest.donorResponses,
+        createdAt: populatedRequest.createdAt,
+        updatedAt: populatedRequest.updatedAt
+      }
     });
   } catch (error) {
     console.error('Error creating blood request:', error);
-    console.error('Error details:', {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    });
-    res.status(500).json({ 
-      message: 'Error creating blood request',
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -353,6 +314,63 @@ router.patch('/blood-requests/:id', auth, async (req, res) => {
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
+});
+
+// Get blood request details
+router.get('/blood-requests/:requestId', auth, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    
+    const bloodRequest = await BloodRequest.findOne({
+      _id: requestId,
+      hospitalId: req.user.userId
+    })
+    .populate('hospitalId', 'name email contactNumber city state')
+    .populate('notifiedDonors', 'name email phone bloodGroup city state lastDonation')
+    .populate('acceptedBy', 'name email phone bloodGroup city state lastDonation')
+    .populate('donorResponses.donor', 'name');
+
+    if (!bloodRequest) {
+      return res.status(404).json({ message: 'Blood request not found' });
+    }
+
+    // Format the response
+    const response = {
+      _id: bloodRequest._id,
+      hospitalId: bloodRequest.hospitalId._id,
+      hospitalName: bloodRequest.hospitalId.name,
+      bloodType: bloodRequest.bloodType,
+      contactPerson: bloodRequest.contactPerson,
+      contactNumber: bloodRequest.contactNumber,
+      urgent: bloodRequest.urgent,
+      status: bloodRequest.status,
+      createdAt: bloodRequest.createdAt,
+      updatedAt: bloodRequest.updatedAt,
+      notifiedDonors: bloodRequest.notifiedDonors.map(donor => ({
+        _id: donor._id,
+        name: donor.name,
+        bloodGroup: donor.bloodGroup,
+        phone: donor.phone,
+        city: donor.city,
+        state: donor.state,
+        lastDonation: donor.lastDonation
+      })),
+      donorResponses: bloodRequest.donorResponses,
+      acceptedBy: bloodRequest.acceptedBy ? {
+        _id: bloodRequest.acceptedBy._id,
+        name: bloodRequest.acceptedBy.name,
+        bloodGroup: bloodRequest.acceptedBy.bloodGroup,
+        phone: bloodRequest.acceptedBy.phone,
+        city: bloodRequest.acceptedBy.city,
+        state: bloodRequest.acceptedBy.state
+      } : undefined
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Error fetching blood request details:', error);
+    res.status(500).json({ message: 'Error fetching blood request details' });
+  }
 });
 
 module.exports = router; 
