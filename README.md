@@ -92,4 +92,4 @@ RaktSetu is a full-stack MERN-based platform designed to bridge the gap between 
 
 ---
 
-## Developed by [Aditya Boddu](https://github.com/adityaboddu)
+## Developed by [Aditya Boddu](https://github.com/adityaboddu0812)
