@@ -54,3 +54,21 @@ https://raktsetu11.netlify.app/
 
 ## 📂 Project Structure
 
+RaktSetu/
+│
+├── client/ # Frontend (React + Vite)
+│ ├── src/
+│ │ ├── components/
+│ │ ├── pages/
+│ │ ├── routes/
+│ │ └── ...
+│ └── ...
+│
+├── server/ # Backend (Express.js)
+│ ├── controllers/
+│ ├── models/
+│ ├── routes/
+│ ├── middleware/
+│ └── ...
+│
+└── README.md
