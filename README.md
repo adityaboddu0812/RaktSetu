@@ -1,11 +1,10 @@
 # 🩸 RaktSetu – Blood Donor Finder Platform
 
-RaktSetu is a full-stack web application built to streamline the connection between **blood donors** and **hospitals**. It provides a secure and efficient way to request, find, and manage blood donations with real-time notifications, emergency alerts, and role-based access.
+RaktSetu is a mern-stack web application built to streamline the connection between **blood donors** and **hospitals**. It provides a secure and efficient way to request, find, and manage blood donations with real-time notifications, emergency alerts, and role-based access.
 
-## 🚀 Live Demo
+## 🚀 Project Link
 
-> _Add your deployed frontend/backend links here once hosted (e.g., Netlify, Vercel, Heroku)._  
-> Example: [Live Site](https://raktsetu11.netlify.app/)
+https://raktsetu11.netlify.app/
 
 ---
 
