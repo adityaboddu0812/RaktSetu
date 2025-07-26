@@ -1,74 +1,93 @@
 # 🩸 RaktSetu – Blood Donor Finder Platform
 
-RaktSetu is a mern-stack web application built to streamline the connection between **blood donors** and **hospitals**. It provides a secure and efficient way to request, find, and manage blood donations with real-time notifications, emergency alerts, and role-based access.
-
-## 🚀 Project Link
-
-https://raktsetu11.netlify.app/
+RaktSetu is a full-stack MERN-based platform designed to bridge the gap between **blood donors** and **hospitals** in need. Built with modern technologies, it provides a secure, efficient, and real-time system for managing blood donation requests, emergency alerts, and donor coordination.
 
 ---
 
-## 🔥 Features
-
-### 🏥 For Hospitals
-- Register and login to manage requests
-- Request blood by blood type and urgency
-- Filter available donors by type and location
-- Real-time notification on request acceptance
-- Emergency requests for rare blood groups (e.g., Bombay)
-
-### 💉 For Donors
-- Sign up and declare blood availability
-- Get notified of matching requests nearby
-- Accept or decline donation requests
-- SOS alerts via mobile for emergencies
-- View personal donation history
-
-### 🛡️ For Admins
-- View and manage all hospitals and donors
-- Approve hospital accounts
-- Delete users if necessary
-- Monitor user activity logs
+## 🔗 Live Project  
+👉 [https://raktsetu11.netlify.app](https://raktsetu11.netlify.app)
 
 ---
 
 ## 🛠️ Tech Stack
 
-### Frontend
-- **React 18**, **TypeScript**, **Vite**
-- **Tailwind CSS**, **Shadcn UI**, **MUI**
-- **React Query**, **React Router**
-- **Zod** for form validation
-
 ### Backend
-- **Node.js**, **Express.js**
-- **MongoDB**, **Mongoose**
-- **JWT** Authentication & **bcryptjs** for password hashing
-- **Helmet**, **Rate Limiting**, **CORS** for security
+- Node.js, Express.js
+- MongoDB + Mongoose
+- JWT Authentication, bcryptjs
+- Security: Helmet, CORS, Rate Limiting
 
-### DevOps
-- Deployment: _Netlify / Vercel (Frontend)_, _Heroku / AWS / Render (Backend)_
-- Version Control: **GitHub**
+### Frontend
+- React 18, TypeScript, Vite
+- Tailwind CSS, shadcn-ui, MUI
+- React Router, React Query
+- Zod (Schema Validation)
 
 ---
 
-## 📂 Project Structure
+## 🚀 Project Structure
 
-RaktSetu/
+raktsetu/
 │
-├── client/ # Frontend (React + Vite)
-│ ├── src/
-│ │ ├── components/
-│ │ ├── pages/
-│ │ ├── routes/
-│ │ └── ...
-│ └── ...
-│
-├── server/ # Backend (Express.js)
-│ ├── controllers/
-│ ├── models/
-│ ├── routes/
-│ ├── middleware/
-│ └── ...
-│
-└── README.md
+├── server/ # Backend (Express API, MongoDB models, routes)
+├── client/ # Frontend (React + Vite + TypeScript)
+└── README.md # You're here!
+
+
+---
+
+## 🌐 Deployment
+
+- **Frontend:** Deployed on Netlify  
+  - Set `VITE_API_URL` in `.env` to your backend URL
+
+- **Backend:** Deployed on Render / Railway / Heroku  
+  - Set environment variables:
+    - `MONGODB_URI`
+    - `JWT_SECRET`
+    - `PORT`
+
+---
+
+## 🔐 User Roles & Key Features
+
+### 🏥 Hospitals
+- Register & login
+- Request blood by type & urgency
+- View matching nearby donors
+- Emergency request support
+
+### 💉 Donors
+- Register & set availability
+- Receive donation requests
+- Accept/decline and track history
+
+### 🛡️ Admin
+- Approve hospitals
+- View & manage all users
+- Monitor platform activity
+
+---
+
+## 📚 API Overview
+
+- `/api/auth/*` – Role-based login & register
+- `/api/donors/*` – Donor operations & availability
+- `/api/hospitals/*` – Hospital requests & dashboard
+- `/api/admin/*` – Admin user & request management
+
+> All APIs are protected using JWT & role-based middleware.
+
+---
+
+## 📈 Future Plans
+
+- SMS/Email alerts (via Twilio or NodeMailer)
+- Google Maps for donor-hospital matching
+- Admin analytics dashboard
+- Donor badge/reward system
+- Multi-language support
+
+---
+
+## ✨ Developed with ❤️ by [Aditya Boddu](https://github.com/adityaboddu)
