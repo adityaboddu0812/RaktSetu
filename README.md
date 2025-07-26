@@ -27,12 +27,13 @@ RaktSetu is a full-stack MERN-based platform designed to bridge the gap between 
 
 ## 📁 Project Structure
 
+```bash
 📁 RaktSetu/
 ├── backend/       # Express.js API, routes, controllers, MongoDB models
 ├── frontend/      # React app (Vite + TS + Tailwind + shadcn-ui)
 ├── .gitignore
 ├── README.md      # You're here
-
+```
 
 
 ---
